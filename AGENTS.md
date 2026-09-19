@@ -1,7 +1,7 @@
 # AGENTS.md — working notes for coding agents
 
 This repo is a **skill**, not a service. Its job: let a main agent outsource
-simple text-only subtasks to a free web AI chat through a real browser.
+simple text-only subtasks to a free web AI chat through a real Edge/Chrome browser.
 
 ## Invariants (do not break)
 
@@ -34,7 +34,7 @@ node bin/ask-web-ai.js ask "x" -p <id> --log-level debug
 ```
 
 Failures always leave a screenshot + HTML under
-`~/.agent-web-ai/chrome-profile/artifacts/<ts>-<provider>/`.
+`~/.agent-web-ai/profiles/<browser>/artifacts/<ts>-<provider>/`.
 
 ## Testing
 
@@ -42,4 +42,4 @@ Failures always leave a screenshot + HTML under
 - `npm run test:e2e` — live call to a real site.
 
 Do not add heavy dependencies. `playwright-core` is the only runtime dependency
-on purpose: it drives the Chrome the user already has.
+on purpose: it drives the Edge/Chrome the user already has.

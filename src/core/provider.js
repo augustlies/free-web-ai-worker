@@ -348,51 +348,109 @@ export class WebAIProvider {
 
   /** Type text into a contenteditable/textarea and submit. */
   async submit(page, prompt, input) {
-    await input.click({ timeout: 10000 });
     await this.setInputText(page, input, prompt);
 
     const button = await this.findSendButton(page);
     if (button) {
-      await button.click({ timeout: 10000 });
-      return;
+      // Chat SPAs enable the send button a tick after the framework sees input.
+      // Clicking a still-disabled button just times out and looks like a hang,
+      // so give it a moment and fall back to Enter when it never enables.
+      const enabled = await this.waitForEnabled(button, 6000);
+      if (enabled) {
+        await button.click({ timeout: 10000 });
+        return;
+      }
+      log.debug('Send button stayed disabled; falling back to Enter key', { provider: this.id });
+    } else {
+      log.debug('No send button matched; falling back to Enter key', { provider: this.id });
     }
-    log.debug('No send button matched; falling back to Enter key', { provider: this.id });
     await input.press('Enter');
+  }
+
+  /** Wait until a control becomes clickable. Returns false instead of throwing. */
+  async waitForEnabled(locator, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        if (await locator.isEnabled({ timeout: 500 })) return true;
+      } catch {
+        return false;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return false;
   }
 
   /**
    * Robustly place text into an input.
    *
-   * Sites use either a real <textarea> or a contenteditable rich editor.
-   * For contenteditable, fill() often fails or leaves stale nodes, so we clear
-   * then insert text through the keyboard path which fires the events the SPA
-   * framework listens for.
+   * Verified 2026-09-19 on Edge 153: Playwright's fill() sets the DOM value but
+   * React does not observe it, so the site keeps its send button disabled. Real
+   * keyboard input does fire the events these SPAs listen for, which is why the
+   * keyboard path is the primary strategy and fill() is only a fallback.
    */
   async setInputText(page, input, prompt) {
-    const tag = await input.evaluate((el) => el.tagName.toLowerCase()).catch(() => 'div');
-
-    if (tag === 'textarea' || tag === 'input') {
-      await input.fill(prompt, { timeout: 10000 });
-      return;
-    }
-
-    // contenteditable path
     await input.click({ timeout: 10000 });
-    await page.keyboard.press('Control+A').catch(() => {});
-    await page.keyboard.press('Delete').catch(() => {});
+
+    // Primary: real keystrokes (works for both <textarea> and contenteditable).
+    await this.clearInput(page, input);
+    await page.keyboard.insertText(prompt);
+    if (await this.inputHasText(input, prompt)) return;
+
+    // Fallback: fill(), for the rare editor that ignores synthetic keys.
     try {
       await input.fill(prompt, { timeout: 5000 });
       if (await this.inputHasText(input, prompt)) return;
     } catch {
-      /* fall through to keyboard insertion */
+      /* fall through */
     }
-    await page.keyboard.insertText(prompt);
+
+    // Last resort: set the value directly and notify the framework.
+    await input.evaluate((el, text) => {
+      el.focus();
+      if (el.isContentEditable) {
+        el.textContent = text;
+      } else {
+        el.value = text;
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, prompt);
   }
 
+  /** Clear whatever is currently in the composer. */
+  async clearInput(page, input) {
+    try {
+      await input.evaluate((el) => {
+        el.focus();
+        if (el.isContentEditable) el.textContent = '';
+        else el.value = '';
+      });
+    } catch {
+      /* ignore */
+    }
+    await page.keyboard.press('Control+A').catch(() => {});
+    await page.keyboard.press('Delete').catch(() => {});
+    await page.waitForTimeout(150);
+  }
+
+  /**
+   * Is there text in the composer now?
+   *
+   * Note: we only require *some* text, not an exact match. Rich editors
+   * normalise whitespace and emoji, so an exact comparison produces false
+   * negatives that would push us into the fallback path unnecessarily.
+   */
   async inputHasText(input, expected) {
     try {
-      const text = (await input.innerText()) || '';
-      return text.trim().length >= Math.min(expected.trim().length, 1);
+      const anyText = await input.evaluate((el) => (el.isContentEditable ? el.innerText : el.value) || '');
+      if (!String(anyText).trim()) return false;
+      const wanted = String(expected || '').trim();
+      if (!wanted) return true;
+      // Compare on the first non-space chunk so leading/trailing normalisation
+      // by the editor cannot fail the check.
+      const prefix = wanted.slice(0, 20);
+      return String(anyText).includes(prefix) || String(anyText).trim().length >= Math.min(wanted.length, 3);
     } catch {
       return false;
     }
@@ -403,6 +461,8 @@ export class WebAIProvider {
     return this.firstMatch(page, this.selectors.SEND_BUTTON || [], { timeout: 4000 });
   }
 }
+
+
 
 
 

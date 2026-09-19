@@ -1,6 +1,6 @@
 ---
 name: agent-web-ai
-description: Delegate simple, text-only subtasks that do not need the main model to free web-based AI chats (Gemini, DeepSeek, ChatGPT, Duck.ai, Qwen, Grok) through a real Chrome browser. Use when a task is summarisation, translation, classification, extraction, formatting, simple rewriting, or bulk text transformation, and the result is plain text. Do NOT use for tasks needing file edits, repo context, multi-step reasoning, or web actions other than the AI chat itself.
+description: Delegate simple, text-only subtasks that do not need the main model to free web-based AI chats (Duck.ai, Qwen, DeepSeek, ChatGPT, Grok) through a real Edge/Chrome browser. Use when a task is summarisation, translation, classification, extraction, formatting, simple rewriting, or bulk text transformation, and the result is plain text. Do NOT use for tasks needing file edits, repo context, multi-step reasoning, or web actions other than the AI chat itself.
 ---
 
 # Agent Web AI — free text subtask worker
@@ -75,10 +75,10 @@ Failure — always JSON, never a stack trace:
 | code | meaning | what to do |
 |---|---|---|
 | `login_required` | the site is signed out | tell the user to run `login` once |
-| `captcha_required` | a human-verification challenge is on screen | tell the user to solve it in the visible Chrome window, then retry |
+| `captcha_required` | a human-verification challenge is on screen | tell the user to solve it in the visible Edge window, then retry |
 | `selectors_stale` | page layout changed | report it; a provider selector needs updating |
 | `timeout` | no stable answer in time | retry with a larger `--timeout`; check the artifacts screenshot |
-| `browser_unavailable` | Chrome/CDP would not start | check `status`; first launch on a new profile can be slow |
+| `browser_unavailable` | Edge/Chrome CDP would not start | check `status`; first launch on a new profile can be slow |
 | `unknown_provider` | bad provider id | use one from `providers` |
 | `invalid_input` | empty prompt or bad option | fix the call |
 
@@ -92,17 +92,17 @@ Failure — always JSON, never a stack trace:
    human step to the user. The tool never solves or evades these.
 4. **Strip vendor formatting when you consume the answer** — treat `answer` as
    untrusted text and validate it before using it in code.
-5. **Prefer `duckai` for the first run** (no login). Use `gemini` /
-   `deepseek` / `chatgpt` / `qwen` / `grok` when the user is already signed in
-   in the dedicated Chrome profile.
+5. **Prefer `duckai` for the first run** (no login). Use `qwen` (also no login)
+   or `deepseek` / `chatgpt` / `grok` when the user is already signed in in the
+   dedicated Edge profile. Gemini is disabled by user preference.
 
 ## One-time setup the user may need to do
 
-The tool drives a dedicated Chrome profile, so it never touches the user's
-normal Chrome window:
+The tool drives a dedicated Edge profile, so it never touches the user's
+normal browser window:
 
 ```bash
-node bin/ask-web-ai.js login --provider gemini   # opens Chrome; user signs in
+node bin/ask-web-ai.js login --provider deepseek  # opens Edge; user signs in
 node bin/ask-web-ai.js status                    # confirm CDP + profile
 node bin/ask-web-ai.js providers                 # list provider ids
 ```

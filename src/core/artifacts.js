@@ -12,9 +12,9 @@ import { log } from './logger.js';
 
 const MAX_ARTIFACT_DIRS = 20;
 
-export function artifactDir(config, providerId) {
+export function artifactDir(profileDir, providerId) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const dir = join(config.browser.profileDir, 'artifacts', `${stamp}-${providerId}`);
+  const dir = join(profileDir, 'artifacts', `${stamp}-${providerId}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -23,10 +23,10 @@ export function artifactDir(config, providerId) {
  * Capture screenshot, page HTML and a small state summary.
  * Never throws — forensics must not mask the original error.
  */
-export async function captureFailure(page, config, providerId, extra = {}) {
-  if (!page) return null;
+export async function captureFailure(page, profileDir, providerId, extra = {}) {
+  if (!page || !profileDir) return null;
   try {
-    const dir = artifactDir(config, providerId);
+    const dir = artifactDir(profileDir, providerId);
     await page.screenshot({ path: join(dir, 'screenshot.png'), fullPage: false }).catch(() => {});
     const html = await page.content().catch(() => '');
     if (html) writeFileSync(join(dir, 'page.html'), html);
@@ -39,7 +39,7 @@ export async function captureFailure(page, config, providerId, extra = {}) {
       ...extra,
     };
     writeFileSync(join(dir, 'summary.json'), JSON.stringify(summary, null, 2));
-    pruneOldArtifacts(config);
+    pruneOldArtifacts(profileDir);
     log.info('Failure artifacts written', { dir });
     return dir;
   } catch (err) {
@@ -49,9 +49,9 @@ export async function captureFailure(page, config, providerId, extra = {}) {
 }
 
 /** Keep only the newest N artifact folders so the profile does not grow forever. */
-function pruneOldArtifacts(config) {
+function pruneOldArtifacts(profileDir) {
   try {
-    const base = join(config.browser.profileDir, 'artifacts');
+    const base = join(profileDir, 'artifacts');
     const dirs = readdirSync(base)
       .map((name) => ({ name, path: join(base, name), mtime: statSync(join(base, name)).mtimeMs }))
       .filter((d) => statSync(d.path).isDirectory())
@@ -61,3 +61,4 @@ function pruneOldArtifacts(config) {
     /* best effort */
   }
 }
+

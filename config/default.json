@@ -1,8 +1,9 @@
 {
   "browser": {
+    "preferred": "edge",
     "port": 9222,
     "headless": false,
-    "profileDir": "~/.agent-web-ai/chrome-profile",
+    "profileDir": "~/.agent-web-ai/profiles",
     "chromePath": null,
     "startupTimeoutMs": 45000,
     "keepAlive": true
@@ -16,11 +17,19 @@
     "newChat": true
   },
   "providers": {
-    "gemini": {
+    "duckai": {
       "enabled": true,
-      "displayName": "Google Gemini",
-      "url": "https://gemini.google.com/app",
-      "requiresLogin": true
+      "displayName": "Duck.ai",
+      "url": "https://duck.ai/",
+      "requiresLogin": false,
+      "note": "Default. No account needed, fastest in testing (~9s)."
+    },
+    "qwen": {
+      "enabled": true,
+      "displayName": "Qwen Chat",
+      "url": "https://chat.qwen.ai/",
+      "requiresLogin": false,
+      "note": "Guest mode verified; signing in raises rate limits."
     },
     "deepseek": {
       "enabled": true,
@@ -40,24 +49,15 @@
       "url": "https://grok.com/",
       "requiresLogin": true
     },
-    "qwen": {
-      "enabled": true,
-      "displayName": "Qwen Chat",
-      "url": "https://chat.qwen.ai/",
-      "requiresLogin": false,
-      "note": "Guest mode verified 2026-09-19; signing in raises rate limits."
-    },
-    "duckai": {
-      "enabled": true,
-      "displayName": "Duck.ai",
-      "url": "https://duck.ai/",
-      "requiresLogin": false
+    "gemini": {
+      "enabled": false,
+      "displayName": "Google Gemini",
+      "url": "https://gemini.google.com/app",
+      "requiresLogin": true,
+      "note": "Disabled by user preference."
     }
   },
   "logging": {
     "level": "info"
   }
 }
-
-
-

@@ -1,12 +1,14 @@
 /**
  * CLI for the Agent Web AI skill.
  *
- *   ask-web-ai ask "<prompt>" [--provider gemini] [--timeout 120] [--json]
- *   ask-web-ai login [--provider gemini]      open the browser for manual login
- *   ask-web-ai status                         browser / profile / provider status
- *   ask-web-ai providers                      list configured providers
+ *   ask-web-ai ask "<prompt>" [--provider qwen] [--json]
+ *   ask-web-ai login [--provider deepseek]     open the browser for a one-time login
+ *   ask-web-ai browser [--use edge|chrome]     show / switch which browser is driven
+ *   ask-web-ai browser --stop                  close the driven browser window
+ *   ask-web-ai providers                       list available providers
+ *   ask-web-ai status                          browser / profile / provider status
  *
- * STDOUT carries only the JSON result (or human text when --no-json).
+ * STDOUT carries only the JSON result (or human text when --text is given).
  * Diagnostics always go to STDERR.
  */
 
@@ -15,20 +17,34 @@ import { loadConfig } from './core/config.js';
 import { askWebAI } from './core/ask.js';
 import { ErrorCodes, WebAIError } from './core/errors.js';
 import { configureLogger, log } from './core/logger.js';
-import { ensureBrowser, detach, openPage, probeCdp, findChromePath } from './core/browser.js';
+import {
+  ensureBrowser,
+  detach,
+  openPage,
+  probeCdp,
+  resolveBrowser,
+  detectInstalledBrowsers,
+  profileDirFor,
+  readCdpState,
+  stopBrowser,
+  writeLocalConfig,
+} from './core/browser.js';
 import { createProvider, knownProviderIds } from './providers/index.js';
 
 const USAGE = `Agent Web AI — delegate simple text subtasks to a free web AI chat.
 
 Usage:
-  ask-web-ai ask [prompt] [options]      Ask a web AI and print the answer (JSON by default)
-  ask-web-ai login [--provider <id>]     Open Chrome so you can log in once
-  ask-web-ai providers                   List available providers
-  ask-web-ai status                      Show browser / profile / provider status
-  ask-web-ai --help                      Show this help
+  ask-web-ai ask [prompt] [options]        Ask a web AI and print the answer (JSON by default)
+  ask-web-ai login [--provider <id>]       Open the browser so you can log in once
+  ask-web-ai browser                       Show which browser is used and what is installed
+  ask-web-ai browser --use <edge|chrome>   Switch which browser to drive
+  ask-web-ai browser --stop                Close the browser this tool opened
+  ask-web-ai providers                     List available web AIs
+  ask-web-ai status                        Show browser / profile / provider status
+  ask-web-ai --help                        Show this help
 
 ask options:
-  -p, --provider <id>    Web AI to use (default: config.defaults.provider)
+  -p, --provider <id>    Web AI to use (default: duckai)
   -t, --timeout <sec>    Overall timeout in seconds (default: 120)
       --stable <sec>     How long the answer must stop changing (default: 3)
       --file <path>      Read the prompt from a file
@@ -39,9 +55,16 @@ ask options:
       --dry-run          Validate config/provider without opening a browser
 
 Examples:
-  ask-web-ai ask "Summarise this in 3 bullet points: ..." -p gemini
-  ask-web-ai ask --stdin --provider duckai < question.txt
-  ask-web-ai login --provider gemini
+  ask-web-ai ask "Summarise this in 3 bullet points: ..."
+  ask-web-ai ask --file ./subtask.txt --provider deepseek
+  ask-web-ai browser --use edge
+  ask-web-ai login --provider deepseek
+
+Notes:
+  - The tool drives its own Edge/Chrome window with a separate profile.
+    Your everyday browser windows are never touched.
+  - DeepSeek / ChatGPT / Grok need a one-time login: run the login command.
+  - Duck.ai and Qwen work with no account at all.
 `;
 
 function parseArgs(argv) {
@@ -74,7 +97,6 @@ function buildOptions(flags, positionalPrompt) {
   let prompt = positionalPrompt || flags['--prompt'] || '';
   if (flags['--file']) prompt = readFileSync(flags['--file'], 'utf8');
   if (flags['--stdin']) prompt = readFileSync(0, 'utf8');
-  if (Array.isArray(prompt)) prompt = prompt.join(' ');
   return {
     prompt,
     provider: typeof flags['--provider'] === 'string' ? flags['--provider'] : undefined,
@@ -86,13 +108,12 @@ function buildOptions(flags, positionalPrompt) {
 }
 
 function printResult(result, { json }) {
-  const text = typeof result.answer === 'string' ? result.answer : '';
   if (json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     return;
   }
   if (result.status === 'success') {
-    process.stdout.write(text + '\n');
+    process.stdout.write(String(result.answer ?? '') + '\n');
   } else {
     process.stderr.write(`ERROR (${result.code || 'error'}): ${result.error}\n`);
     process.exitCode = 1;
@@ -116,20 +137,27 @@ async function cmdAsk(args) {
 async function cmdLogin(args) {
   const cfg = loadConfig();
   configureLogger({ level: args.flags['--log-level'] || 'info' });
-  const providerId = (typeof args.flags['--provider'] === 'string' ? args.flags['--provider'] : cfg.defaults.provider || 'duckai').toLowerCase();
+  const providerId = (typeof args.flags['--provider'] === 'string' ? args.flags['--provider'] : cfg.defaults.provider).toLowerCase();
+
   if (!knownProviderIds().includes(providerId)) {
     log.error(`Unknown provider "${providerId}"`, { known: knownProviderIds() });
     process.exitCode = 2;
     return;
   }
+
   const provider = createProvider(providerId, cfg);
-  log.info(`Opening ${provider.displayName} for manual login / verification`);
-  const { browser, context } = await ensureBrowser(cfg, { initialUrl: provider.url });
+  const { browser, context, browserInfo } = await ensureBrowser(cfg, { initialUrl: provider.url });
   const page = await openPage(context, provider.url, { waitMs: 60000 });
-  log.info('Chrome window is open. Complete any login or verification there, then press Enter here to close this tab.');
+
+  log.info('');
+  log.info(`A ${browserInfo.label} window is open on ${provider.displayName}.`);
+  log.info('  1. Log in there normally (your password / QR code is handled by you, not by this tool).');
+  log.info('  2. Make sure you can see the chat input box.');
+  log.info('  3. Come back to this terminal and press Enter.');
+  log.info('');
+
   await new Promise((resolve) => {
     if (!process.stdin.isTTY) {
-      // Non-interactive callers (agents) should not hang: give the user a grace period.
       log.info('Non-interactive stdin detected; leaving the tab open and returning immediately.');
       resolve();
       return;
@@ -137,45 +165,183 @@ async function cmdLogin(args) {
     process.stdin.resume();
     process.stdin.once('data', resolve);
   });
+
   const url = page.url();
   await page.close().catch(() => {});
   await detach(browser);
-  process.stdout.write(JSON.stringify({ status: 'success', provider: providerId, action: 'login_window_opened', url, note: 'Chrome stays open with the dedicated profile; sessions persist.' }, null, 2) + '\n');
+  process.stdout.write(
+    JSON.stringify(
+      {
+        status: 'success',
+        provider: providerId,
+        browser: browserInfo.id,
+        action: 'login_window_opened',
+        url,
+        note: `Login state is stored in the dedicated ${browserInfo.label} profile and reused on future runs.`,
+        profileDir: browserInfo.profileDir,
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+}
+
+async function cmdBrowser(args) {
+  const cfg = loadConfig();
+  configureLogger({ level: args.flags['--log-level'] || 'info' });
+  const installed = detectInstalledBrowsers();
+  const use = typeof args.flags['--use'] === 'string' ? args.flags['--use'].toLowerCase() : null;
+
+  if (use) {
+    if (!BROWSER_IDS.includes(use)) {
+      log.error(`Unknown browser "${use}". Use one of: ${BROWSER_IDS.join(', ')}`);
+      process.exitCode = 2;
+      return;
+    }
+    if (!installed[use]) {
+      log.error(`${BROWSER_LABELS[use] || use} does not appear to be installed on this machine.`, {
+        hint: 'Set browser.chromePath in config/local.json to point at the executable.',
+      });
+      process.exitCode = 2;
+      return;
+    }
+    const running = await probeCdp(cfg.browser.port);
+    if (running) {
+      const runningId = /edg/i.test(running.Browser || '') ? 'edge' : 'chrome';
+      if (runningId !== use) {
+        log.info(`Closing the ${BROWSER_LABELS[runningId] || runningId} window this tool opened so ${BROWSER_LABELS[use]} can take over...`);
+        await stopBrowser(cfg, runningId);
+      }
+    }
+    writeLocalConfig({ browser: { preferred: use } });
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: 'success',
+          action: 'browser_switched',
+          preferred: use,
+          label: BROWSER_LABELS[use],
+          path: installed[use].path,
+          note: 'The next ask / login command will use this browser.',
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+    return;
+  }
+
+  const active = resolveBrowser(cfg);
+  const detail = await probeCdp(cfg.browser.port);
+  const runningId = detail ? (/edg/i.test(detail.Browser || '') ? 'edge' : 'chrome') : null;
+  const report = {
+    status: 'success',
+    willUse: active ? { id: active.id, label: active.label, path: active.path, reason: active.source } : null,
+    installed: Object.values(installed).map((b) => ({ id: b.id, label: b.label, path: b.path })),
+    currentlyRunning: detail
+      ? {
+          id: runningId,
+          label: BROWSER_LABELS[runningId] || runningId,
+          version: detail.Browser,
+          port: cfg.browser.port,
+          matchesPreference: runningId === active?.id,
+        }
+      : null,
+    profileDir: active ? profileDirFor(cfg, active.id) : null,
+  };
+
+  if (args.flags['--stop']) {
+    const stopId = runningId || active?.id;
+    const result = await stopBrowser(cfg, stopId);
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: 'success',
+          action: 'browser_stopped',
+          browser: stopId,
+          stoppedProcesses: result.stopped,
+          pids: result.pids,
+          note: 'Only the window this tool opened was closed; your everyday browser was not touched.',
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+    return;
+  }
+
+  if (!args.flags['--json'] && process.stdout.isTTY) {
+    process.stdout.write(`Will use   : ${report.willUse ? report.willUse.label + ' (' + report.willUse.path + ')' : 'NONE FOUND'}\n`);
+    process.stdout.write(`Reason     : ${report.willUse?.reason || '-'}\n`);
+    process.stdout.write(`Installed  : ${report.installed.map((b) => b.label).join(', ') || 'none detected'}\n`);
+    process.stdout.write(
+      `Open now   : ${report.currentlyRunning ? report.currentlyRunning.label + ' ' + report.currentlyRunning.version : 'nothing on port ' + cfg.browser.port}\n`,
+    );
+    process.stdout.write(`Profile    : ${report.profileDir || '-'}\n`);
+    process.stdout.write(`\nSwitch with: ask-web-ai browser --use edge\nClose with : ask-web-ai browser --stop\n`);
+    return;
+  }
+  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
 }
 
 async function cmdProviders(args) {
   const cfg = loadConfig();
   const list = knownProviderIds().map((id) => {
     const s = cfg.providers?.[id] || {};
-    return { id, name: s.displayName || id, url: s.url, enabled: s.enabled !== false, requiresLogin: !!s.requiresLogin, isDefault: (cfg.defaults.provider || 'duckai') === id };
+    return {
+      id,
+      name: s.displayName || id,
+      url: s.url,
+      enabled: s.enabled !== false,
+      requiresLogin: !!s.requiresLogin,
+      isDefault: cfg.defaults.provider === id,
+    };
   });
-  const json = !args.flags['--text'];
-  if (json) process.stdout.write(JSON.stringify({ status: 'success', defaultProvider: cfg.defaults.provider, providers: list }, null, 2) + '\n');
-  else list.forEach((p) => process.stdout.write(`${p.enabled ? '●' : '○'} ${p.id.padEnd(10)} ${p.name.padEnd(16)} ${p.requiresLogin ? 'login' : 'no-login'}  ${p.url}\n`));
+  if (!args.flags['--text'] && (args.flags['--json'] || !process.stdout.isTTY)) {
+    process.stdout.write(JSON.stringify({ status: 'success', defaultProvider: cfg.defaults.provider, providers: list }, null, 2) + '\n');
+  } else {
+    for (const p of list) {
+      process.stdout.write(
+        `${p.enabled ? '●' : '○'} ${p.id.padEnd(10)} ${p.name.padEnd(14)} ${p.requiresLogin ? 'needs login' : 'no login   '}  ${p.url}\n`,
+      );
+    }
+  }
 }
 
 async function cmdStatus(args) {
   const cfg = loadConfig();
-  const version = await probeCdp(cfg.browser.port);
-  const chromePath = findChromePath(cfg);
+  const detail = await probeCdp(cfg.browser.port);
+  const active = resolveBrowser(cfg);
+  const installed = detectInstalledBrowsers();
+  const provider = (cfg.providers || {})[cfg.defaults.provider] || {};
+
   const report = {
     status: 'success',
-    chromePath: chromePath || null,
-    chromeFound: !!chromePath,
-    cdp: version ? { connected: true, port: cfg.browser.port, browser: version.Browser } : { connected: false, port: cfg.browser.port },
-    profileDir: cfg.browser.profileDir,
+    browser: {
+      willUse: active ? { id: active.id, label: active.label, path: active.path, reason: active.source } : null,
+      installed: Object.keys(installed),
+      openNow: detail ? { browser: detail.Browser, port: cfg.browser.port } : null,
+      profileDir: active ? profileDirFor(cfg, active.id) : null,
+    },
     defaultProvider: cfg.defaults.provider,
+    defaultProviderName: provider.displayName || cfg.defaults.provider,
     timeoutMs: cfg.defaults.timeoutMs,
+    enabledProviders: knownProviderIds().filter((id) => cfg.providers?.[id]?.enabled !== false),
   };
+
   if (!args.flags['--json'] && process.stdout.isTTY) {
-    process.stdout.write(`Chrome binary : ${report.chromePath || 'NOT FOUND'}\n`);
-    process.stdout.write(`CDP (${report.cdp.port})   : ${report.cdp.connected ? 'connected — ' + report.cdp.browser : 'not running'}\n`);
-    process.stdout.write(`Profile dir   : ${report.profileDir}\n`);
-    process.stdout.write(`Default       : ${report.defaultProvider} (timeout ${report.timeoutMs / 1000}s)\n`);
-  } else {
-    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    process.stdout.write(`Browser    : ${report.browser.willUse ? report.browser.willUse.label : 'NONE FOUND'}\n`);
+    process.stdout.write(`Open now   : ${report.browser.openNow ? report.browser.openNow.browser : 'no'}\n`);
+    process.stdout.write(`Profile    : ${report.browser.profileDir || '-'}\n`);
+    process.stdout.write(`Default AI : ${report.defaultProviderName} (${report.defaultProvider})\n`);
+    process.stdout.write(`Enabled    : ${report.enabledProviders.join(', ')}\n`);
+    return;
   }
+  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
 }
+
+const BROWSER_LABELS = { edge: 'Microsoft Edge', chrome: 'Google Chrome' };
+const BROWSER_IDS = Object.keys(BROWSER_LABELS);
 
 export async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
@@ -192,6 +358,9 @@ export async function main(argv = process.argv.slice(2)) {
       case 'login':
         await cmdLogin(args);
         break;
+      case 'browser':
+        await cmdBrowser(args);
+        break;
       case 'providers':
         await cmdProviders(args);
         break;
@@ -199,7 +368,7 @@ export async function main(argv = process.argv.slice(2)) {
         await cmdStatus(args);
         break;
       case 'version':
-        process.stdout.write('agent-web-ai 0.1.0-mvp\n');
+        process.stdout.write('agent-web-ai 0.2.0-mvp\n');
         break;
       default:
         process.stderr.write(`Unknown command "${command}"\n\n${USAGE}`);
@@ -211,3 +380,5 @@ export async function main(argv = process.argv.slice(2)) {
     process.exitCode = 1;
   }
 }
+
+

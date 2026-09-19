@@ -101,11 +101,13 @@ export async function askWebAI(options = {}) {
   let browser = null;
   let page = null;
   let provider = null;
+  let profileDir = null;
 
   try {
     provider = createProvider(providerId, cfg);
-    const { browser: b, context } = await ensureBrowser(cfg, { initialUrl: provider.url });
+    const { browser: b, context, browserInfo } = await ensureBrowser(cfg, { initialUrl: provider.url });
     browser = b;
+    profileDir = browserInfo?.profileDir ?? null;
 
     page = await openPage(context, provider.url, { waitMs: Math.max(30000, Math.min(timeoutMs, 60000)) });
     log.debug('Page opened', { provider: providerId, url: page.url() });
@@ -135,7 +137,7 @@ export async function askWebAI(options = {}) {
   } catch (err) {
     const e = toWebAIError(err, ErrorCodes.INTERNAL);
     log.error('ask_web_ai failed', { provider: providerId, code: e.code, error: e.message });
-    const artifacts = await captureFailure(page, cfg, providerId, { code: e.code, error: e.message });
+    const artifacts = await captureFailure(page, profileDir, providerId, { code: e.code, error: e.message });
     return e.toResult(providerId, {
       meta: { startedAt, url: safeUrl(page), ...(artifacts ? { artifacts } : {}) },
     });
@@ -155,4 +157,5 @@ function safeUrl(page) {
 }
 
 export { ErrorCodes } from './errors.js';
+
 
