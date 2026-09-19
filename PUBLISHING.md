@@ -1,49 +1,49 @@
-# Publishing checklist (run once, in order)
+# Publishing checklist
 
-The repo is release-ready except for your personal identity. This file walks
-through the final steps. Delete it after publishing if you prefer.
+The repository is prepared and the author identity is already filled in
+(`augustlies <304962398+augustlies@users.noreply.github.com>`).
+What remains is creating the GitHub repository and pushing.
 
-## 1. Fill in your identity
+## Status
 
-Get your GitHub privacy email from **GitHub -> Settings -> Emails ->
-"Keep my email addresses private"** (it looks like
-`12345678+yourusername@users.noreply.github.com`).
+- [x] Author identity filled into package.json, both READMEs, CHANGELOG and the skill
+- [x] Development commits re-authored to `augustlies` (verified with `git log`)
+- [x] 23 offline unit tests pass
+- [x] Skill structure validates
+- [x] `npm pack` contents contain no `config/local.json`, no `node_modules`, no tests
+- [x] Clean install from the tarball verified: CLI runs, module imports, assets present
+- [x] No credentials, real email addresses, phone numbers or machine-specific paths in any tracked file or in git history
+- [x] Live end-to-end call verified (Duck.ai, ~10s)
+- [ ] Create the GitHub repository
+- [ ] Push
+- [ ] Confirm CI is green
 
-```bash
-node scripts/set-identity.mjs --username YOUR_GH_USERNAME --email YOUR_PRIVACY_EMAIL --name "Your Name" --rewrite-history
-git add -A && git commit -m "Fill in repository identity"
-```
+## 1. Create the repository on GitHub
 
-`--rewrite-history` re-authors the existing development commits so the public
-history shows you instead of the placeholder identity. It refuses to run if the
-working tree has uncommitted changes, so commit or stash first.
-
-That replaces every `YOUR_GITHUB_USERNAME` / `YOUR_NAME` / `YOUR_EMAIL`
-placeholder in `package.json`, both READMEs, `CHANGELOG.md` and the skill, and
-sets this repo's local git identity.
-
-## 2. Create the repository on GitHub
-
-1. Go to https://github.com/new
+1. Open https://github.com/new
 2. Repository name: **free-web-ai-worker**
 3. Visibility: **Public**
-4. **Do not** initialise with README / .gitignore / license -- the repo already has them
-5. Create
+4. **Do not** initialise with README / .gitignore / license -- the project already has them
+5. Click **Create repository**
 
-## 3. Push
+## 2. Push
 
 ```bash
-git remote add origin https://github.com/YOUR_GH_USERNAME/free-web-ai-worker.git
+git remote add origin https://github.com/augustlies/free-web-ai-worker.git
 git push -u origin main
 ```
 
-## 4. Verify CI
+A browser window will ask you to sign in to GitHub. That is normal -- it is
+GitHub's own credential prompt, and your password is handled by GitHub, not by
+this project.
 
-Open the **Actions** tab. The workflow runs offline tests on
-ubuntu + windows across Node 20 and 22, plus a skill-structure check.
-All four matrix jobs should be green.
+## 3. Verify CI
 
-## 5. Polish the repo page
+Open the **Actions** tab of the new repository. The workflow runs offline tests
+on ubuntu + windows across Node 20 and 22, plus a skill-structure check.
+All four matrix jobs should go green within a minute or two.
+
+## 4. Polish the repository page
 
 - **About** (top right): description =
   `Delegate simple text subtasks from your AI coding agent to free web AIs through a real browser.`
@@ -51,7 +51,7 @@ All four matrix jobs should be green.
   `chatgpt`, `deepseek`, `qwen`, `codex`, `cline`
 - Confirm the screenshot renders in the README
 
-## 6. Cut a release (optional)
+## 5. Cut a release (optional)
 
 ```bash
 git tag -a v0.1.0 -m "v0.1.0 - first public release"
@@ -61,7 +61,7 @@ git push origin v0.1.0
 Then create a Release from that tag and paste the `0.1.0` section of
 `CHANGELOG.md`.
 
-## 7. Publishing to npm (later, when you are ready)
+## 6. Publishing to npm (later, when you are ready)
 
 npm is **not** published yet. When you want to:
 
@@ -72,23 +72,12 @@ npm publish        # prepack runs the offline tests; refuses to publish on failu
 
 Notes:
 - Version numbers on npm are **permanent** -- `0.1.0` cannot be reused once taken.
-- After publishing, the `npx github:` command in the READMEs can be simplified to
-  `npx free-web-ai-worker ...`.
-
-## Pre-flight checks that were already run
-
-- [x] 23 offline unit tests pass
-- [x] Skill structure validates
-- [x] `npm pack` contents have no `config/local.json`, no `node_modules`, no tests
-- [x] Clean install from the tarball works: CLI runs, module imports, assets present
-- [x] No credentials, real email addresses, phone numbers or machine-specific
-      absolute paths in any tracked file or in git history
-- [x] End-to-end live call verified (Duck.ai, ~10s)
+- After publishing, the `npx github:` commands in the READMEs can be simplified
+  to `npx free-web-ai-worker ...`.
 
 ## Security note
 
-Never paste passwords or API tokens into a chat or into any file in this repo.
-The tool never needs them: DeepSeek/ChatGPT logins happen by hand inside the
-dedicated browser window, and git pushes authenticate via your credential
-manager or a personal access token you keep to yourself.
-
+Never paste passwords or API tokens into a chat or into any file in this
+repository. This tool never needs them: DeepSeek/ChatGPT logins happen by hand
+inside the dedicated browser window, and git pushes authenticate through
+GitHub's own credential prompt.
