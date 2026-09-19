@@ -1,0 +1,9 @@
+# Normalise line endings so Windows contributors do not produce noisy diffs.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary

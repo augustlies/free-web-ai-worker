@@ -69,11 +69,13 @@
       "displayName": "Google Gemini",
       "url": "https://gemini.google.com/app",
       "requiresLogin": true,
-      "note": "Disabled by user preference."
+      "experimental": true,
+      "note": "EXPERIMENTAL: selectors were written against the published DOM structure but not verified on a live signed-in session. Ships disabled. Enable by setting providers.gemini.enabled=true in config/local.json and verifying it works for your locale."
     }
   },
   "logging": {
     "level": "info"
   }
 }
+
 

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig, listEnabledProviders, expandPath } from '../src/core/config.js';
 import { WebAIError, ErrorCodes, toWebAIError } from '../src/core/errors.js';
-import { createProvider, knownProviderIds } from '../src/providers/index.js';
+import { createProvider, knownProviderIds, isExperimental } from '../src/providers/index.js';
 import { askWebAI } from '../src/core/ask.js';
 import { homedir } from 'node:os';
 
@@ -22,8 +22,15 @@ test('config expands ~ to the home directory', () => {
   assert.ok(p.startsWith(homedir()), `expected ${p} to start with ${homedir()}`);
 });
 
-test('every configured provider has a matching class', () => {
-  const cfg = loadConfig();
+test('every registered provider has a matching class and selectors', () => {
+  // Disabled providers (e.g. experimental ones) still must be constructible
+  // once enabled, so enable everything for this structural check.
+  const base = loadConfig();
+  const allEnabled = Object.fromEntries(
+    Object.keys(base.providers).map((id) => [id, { ...base.providers[id], enabled: true }]),
+  );
+  const cfg = loadConfig({ providers: allEnabled });
+
   for (const id of knownProviderIds()) {
     const p = createProvider(id, cfg);
     assert.equal(p.id, id);
@@ -31,6 +38,21 @@ test('every configured provider has a matching class', () => {
     assert.ok(p.constructor.selectors.INPUT, `${id} declares INPUT selectors`);
     assert.ok(p.constructor.selectors.ANSWER, `${id} declares ANSWER selectors`);
   }
+});
+
+test('a disabled provider reports provider_disabled, not unknown_provider', () => {
+  const cfg = loadConfig({ providers: { gemini: { enabled: false } } });
+  try {
+    createProvider('gemini', cfg);
+    assert.fail('expected createProvider to throw for a disabled provider');
+  } catch (err) {
+    assert.equal(err.code, 'provider_disabled');
+  }
+});
+
+test('experimental providers are marked as such', () => {
+  assert.ok(isExperimental('gemini'), 'gemini should be flagged experimental');
+  assert.ok(!isExperimental('duckai'), 'duckai is verified and must not be flagged');
 });
 
 test('unknown provider ids are rejected', () => {

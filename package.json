@@ -1,10 +1,36 @@
 {
-  "name": "agent-web-ai",
-  "version": "0.1.0-mvp",
-  "description": "Agent Web AI subtask skill: delegate simple text subtasks from a main agent to free web-based AI chats via a real Chrome browser.",
+  "name": "free-web-ai-worker",
+  "version": "0.1.0",
+  "description": "Delegate simple, text-only subtasks from an AI coding agent to free web-based AI chats through a real Edge/Chrome browser.",
   "type": "module",
   "license": "MIT",
-  "private": true,
+  "author": "YOUR_NAME <YOUR_EMAIL>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker.git"
+  },
+  "homepage": "https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker#readme",
+  "bugs": {
+    "url": "https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker/issues"
+  },
+  "keywords": [
+    "ai-agent",
+    "agent-skill",
+    "mcp",
+    "mcp-server",
+    "playwright",
+    "browser-automation",
+    "chatgpt",
+    "gemini",
+    "deepseek",
+    "qwen",
+    "duckduckgo",
+    "subtask",
+    "token-saving",
+    "llm",
+    "codex",
+    "cline"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -12,17 +38,39 @@
     "ask-web-ai": "./bin/ask-web-ai.js"
   },
   "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./mcp": "./src/mcp-server.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "config/default.json",
+    "docs/",
+    "skills/",
+    "CHANGELOG.md",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
   "scripts": {
     "ask": "node ./bin/ask-web-ai.js ask",
     "login": "node ./bin/ask-web-ai.js login",
     "status": "node ./bin/ask-web-ai.js status",
     "providers": "node ./bin/ask-web-ai.js providers",
+    "limits": "node ./bin/ask-web-ai.js limits",
+    "cache": "node ./bin/ask-web-ai.js cache",
     "test": "node --test tests/unit.test.js tests/throttle.test.js",
     "test:e2e": "node ./tests/e2e.live.js",
-    "mcp": "node ./src/mcp-server.js"
+    "mcp": "node ./src/mcp-server.js",
+    "prepack": "node ./scripts/prepack-check.mjs"
   },
   "dependencies": {
     "playwright-core": "1.63.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
 

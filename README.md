@@ -1,368 +1,387 @@
-# Agent Web AI — 主 Agent 的免费文本子任务执行层
+# free-web-ai-worker
 
-让 Codex / Cline / dsh 等主 Agent 把**只产生文本结果的小任务**外包给网页版免费 AI，
-拿回纯文本后继续执行原任务。主模型因此省下 Token、API 费用和上下文空间。
+**Let your AI coding agent outsource simple text subtasks to a free web AI.**
+
+Your main agent keeps its context and tokens for the hard problems. The boring
+text work -- summarising, translating, classifying, extracting, reformatting --
+gets handed to a free web AI chat, and only the plain-text answer comes back.
 
 ```
-主 Agent → ask_web_ai(prompt) → 你自己的 Edge 浏览器 → 网页版 AI → 纯文本答案 → 主 Agent 继续
+main agent -> ask_web_ai(prompt) -> your own Edge/Chrome -> web AI -> plain text -> main agent continues
 ```
 
-**当前状态：MVP 已跑通，浏览器已切换为 Edge。**
-在 Windows + Microsoft Edge 153 上实测完成
-`Agent → Skill → Edge → Duck.ai / Qwen → 提问 → 获取回答 → 返回 JSON` 全链路，
-单次问答约 **9–10 秒**。
+No API keys. No per-token billing. No extra browser download -- it drives the
+Edge or Chrome you already have, reusing your own login through a dedicated,
+isolated profile.
 
-> 浏览器偏好：**Microsoft Edge**（可在配置里换成 Chrome）。
-> 已按需求**移除 Gemini**。
-> **内置防封号保护**：调用间隔、批量冷却、每日上限、触发验证码自动熔断、相同问题走缓存 —— 默认全部开启。
+[![npm](https://img.shields.io/badge/npm-not%20published%20yet-lightgrey)](#installation)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
+
+![Asking Duck.ai a question through free-web-ai-worker](docs/screenshot-answer.png)
 
 ---
 
-## 1. 先调研，再决定复用（本项目实际做法）
+## Why not just use the API?
 
-开发前按要求先搜索了 GitHub 上的成熟项目，结论如下：
+Because most of your agent's work does not deserve a frontier model.
 
-| 项目 | 许可证 | 与本项目的关系 | 我们的处理 |
-|---|---|---|---|
-| [ToaruPen/Cavendish](https://github.com/ToaruPen/Cavendish) | ISC | Playwright + CDP 驱动系统浏览器、持久 profile、选择器漂移检测 | **借鉴架构**（CDP + 持久 profile + 选择器集中管理），未直接依赖：它专为 ChatGPT 付费版设计 |
-| [ljie-PI/web-chat](https://github.com/ljie-PI/web-chat) | MIT | OpenClaw skill：Playwright 连接已启动的浏览器，向网页 AI 提问并提取回答 | **借鉴思路**（复用用户已登录的浏览器、稳定轮询），未直接依赖：仅支持 2 家、无 Provider 抽象 |
-| [mrshibly/PhantomAPI](https://github.com/mrshibly/PhantomAPI) | MIT | 把 ChatGPT 网页版包装成 OpenAI 兼容 API | 参考其响应等待逻辑；本项目定位不同（子任务委派而非 API 代理） |
-| [STAR-173/LLMSession-Docker](https://github.com/STAR-173/LLMSession-Docker) | MIT | Docker 内驱动网页 LLM 会话 | 未采用：容器 + 无头模式在多数站点会触发人机验证 |
+| | Main model handles it | This tool handles it |
+|---|---|---|
+| Cost per call | Real money, every token | Free (uses web UI access you already have) |
+| Effect on context | Consumes the main agent's window | Zero -- only the final text crosses back |
+| Good for | Reasoning, code, multi-step work | Summarise / translate / classify / extract |
 
-**结论**：没有现成项目同时满足「多 Provider 抽象 + Skill 形态 + 复用真实登录态 + 不绕过风控」，
-因此在借鉴上述实现的基础上自建本仓库，把工作量集中在**上层接口、Provider 抽象与错误契约**上。
-
-依赖方面只使用 `playwright-core`（MIT）—— 直接驱动你已安装的 Edge，不额外下载浏览器内核。
+**Keep the expensive model for the work that needs it.**
 
 ---
 
-## 2. 快速开始
+## How it differs from similar projects
 
-### 环境要求
+There are existing tools that automate web AI chats. Here is the honest
+comparison -- you should pick the one that fits your problem.
 
-- Node.js ≥ 20（实测 24.12）
-- **Microsoft Edge**（本机已检测到）；也支持 Google Chrome
+| | **free-web-ai-worker** | [Cavendish](https://github.com/ToaruPen/Cavendish) | [web-chat](https://github.com/ljie-PI/web-chat) | [PhantomAPI](https://github.com/mrshibly/PhantomAPI) |
+|---|---|---|---|---|
+| **Goal** | Outsource *subtasks* from an agent | Drive ChatGPT Pro from a CLI | Ask Gemini/ChatGPT from a skill | Expose ChatGPT as an OpenAI-compatible API |
+| **Web AIs** | 5 (pluggable) | 1 (ChatGPT, hard-coded) | 2 (Gemini, ChatGPT) | 1 (ChatGPT) |
+| **Provider abstraction** | Yes -- add a site in one file | No | No | No |
+| **Interfaces** | CLI + MCP + Skill + Node module | CLI | Skill | HTTP API |
+| **Anti-abuse guard** | Yes -- interval, cooldown, quota, breaker, cache | No | No | No |
+| **Long jobs / attachments** | No | Yes | No | No |
+| **License** | MIT | ISC | MIT | MIT |
 
-```bash
-npm install          # 只装 playwright-core，不下载浏览器
-npm test             # 10 个单元测试，不需要浏览器
-```
-
-### 第一次运行（跑通链路）
-
-```bash
-# 1) 看环境（会告诉你是用 Edge 还是 Chrome）
-node bin/ask-web-ai.js browser
-
-# 2) 零登录的 AI，直接问
-node bin/ask-web-ai.js ask "请用三句话解释什么是板块构造。"
-
-# 3) 用测试脚本验证
-npm run test:e2e
-```
-
-第一次运行会**自动打开一个专用的 Edge 窗口**（独立账号档案，存在
-`~/.agent-web-ai/profiles/edge`，和你平时用的 Edge 完全隔离，不影响你原来的浏览记录和登录状态）。
-
-### 需要人工操作的步骤（仅一次）
-
-Duck.ai 和 Qwen **不需要登录**，可以直接用。使用 DeepSeek / ChatGPT / Grok 时：
-
-```bash
-node bin/ask-web-ai.js login --provider deepseek   # 弹出专用 Edge 窗口
-# → 你在那个窗口里正常登录（账号密码/扫码都由你本人操作）
-# → 登录完成后回到终端按 Enter
-node bin/ask-web-ai.js ask "测试" -p deepseek
-```
-
-登录状态保存在专用档案里，**之后每次调用都会自动复用，不需要重复登录**。
-
-**如果出现人机验证（CAPTCHA）**：工具会返回 `captcha_required`，
-请在那个 Edge 窗口里手动完成验证，再重新执行同一条命令。
-本项目**不会、也不会尝试**自动破解验证码。
-
-**如果出现 `access_blocked`**：说明该网站判定当前网络异常。
-工具不会绕过它，请稍后重试或换个 AI。
+**If you need** deep research, file attachments, or ChatGPT-Pro features -- use
+Cavendish. **If you need** an OpenAI-compatible endpoint for n8n -- use
+PhantomAPI. **If you want** an agent to hand off small text tasks to whichever
+free web AI is available, without getting your account flagged -- that is this
+project.
 
 ---
 
-## 3. 常用命令（人话版）
+## Installation
+
+Requires **Node.js >= 20** and **Microsoft Edge or Google Chrome**.
 
 ```bash
-node bin/ask-web-ai.js browser                 # 我现在用的是哪个浏览器？
-node bin/ask-web-ai.js browser --use edge      # 切换到 Edge
-node bin/ask-web-ai.js browser --use chrome    # 切换到 Chrome
-node bin/ask-web-ai.js browser --stop          # 关掉工具开的那个浏览器窗口
+# Run straight from GitHub -- no install, no publish required
+npx -y github:YOUR_GITHUB_USERNAME/free-web-ai-worker ask "Say OK" --json
 
-node bin/ask-web-ai.js providers               # 有哪些 AI 可以用？
-node bin/ask-web-ai.js limits                  # 今天用了多少？还能用吗？
-node bin/ask-web-ai.js status                  # 整体状态
-
-node bin/ask-web-ai.js ask "问题"                          # 问一句（默认 Duck.ai）
-node bin/ask-web-ai.js ask "问题" -p qwen                  # 换 Qwen
-node bin/ask-web-ai.js ask "问题" --text                   # 直接看答案，不要 JSON
-node bin/ask-web-ai.js ask "问题" --log-level debug        # 出问题时看详细过程
+# Or clone and run locally
+git clone https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker.git
+cd free-web-ai-worker
+npm install
+node bin/ask-web-ai.js ask "Say OK" --json
 ```
+
+> npm package name (`free-web-ai-worker`) is reserved and the publish metadata is
+> ready, but the package is **not published yet**. Use the `npx github:` form
+> above, or install from a clone.
+
+### 60-second smoke test
+
+```bash
+node bin/ask-web-ai.js browser          # which browser will be used?
+node bin/ask-web-ai.js providers        # list available web AIs
+node bin/ask-web-ai.js ask "请用三句话解释什么是板块构造。" --json
+```
+
+The first run opens a **dedicated** Edge/Chrome window with its own profile
+(`~/.agent-web-ai/profiles/<browser>`). Your everyday browser windows, history
+and logins are never touched.
+
+`duckai` and `qwen` need no account. Everything below that needs a login is a
+one-time setup:
+
+```bash
+node bin/ask-web-ai.js login --provider deepseek   # sign in inside the window
+node bin/ask-web-ai.js ask "test" -p deepseek --json
+```
+
+The session is stored in the dedicated profile and reused automatically.
 
 ---
 
-## 4. 接入方式
+## Use it from your agent
 
-### 方式 A：CLI（任何 Agent 都能用）
+### 1. CLI (works with any agent that can run a shell)
 
 ```bash
-# stdout 是纯 JSON，可直接 parse；日志全部走 stderr
-node bin/ask-web-ai.js ask "<prompt>" --json
-
-# 长文本不吃 shell 转义
-node bin/ask-web-ai.js ask --file ./subtask.txt --json
-cat notes.md | node bin/ask-web-ai.js ask --stdin --json
+ask-web-ai ask "<prompt>" --json                      # pure JSON on stdout
+ask-web-ai ask --file ./subtask.txt --json            # avoid shell escaping
+cat notes.md | ask-web-ai ask --stdin --json          # pipe long input
 ```
 
-### 方式 B：MCP（Cline / dsh / Claude Desktop 等）
+Logs always go to **stderr**, so `stdout` is safe to `JSON.parse` directly.
 
-在 MCP 客户端里配置：
+### 2. MCP (Cline, dsh, Claude Desktop, ...)
+
+From a local clone (no publish required):
 
 ```json
 {
   "mcpServers": {
-    "agent-web-ai": {
+    "free-web-ai-worker": {
       "command": "node",
-      "args": ["D:/AI Playground/WebAITool/src/mcp-server.js"]
+      "args": ["<repo-root>/src/mcp-server.js"]
     }
   }
 }
 ```
 
-提供一个工具：`ask_web_ai({ prompt, provider?, timeout_ms? })`。
+Exposes one tool: `ask_web_ai({ prompt, provider?, timeout_ms? })`.
 
-### 方式 C：Codex Skill
+### 3. Codex / agent skill
 
-把 `skills/agent-web-ai/` 拷到你的 skills 目录（或直接把本仓库当作 skill 目录）。
+Copy `skills/free-web-ai-worker/` into your skills directory, or point your
+agent at this repo. The skill uses the `npx github:` form so the folder works
+standalone, without a local clone.
 
-### 方式 D：作为 Node 模块
+### 4. Node module
 
 ```js
-import { askWebAI } from './src/core/ask.js';
+import { askWebAI } from 'free-web-ai-worker';
 
-const r = await askWebAI({ prompt: '把这段总结成三句话：…', provider: 'duckai' });
-if (r.status === 'success') console.log(r.answer);
+const result = await askWebAI({ prompt: 'Summarise this in 3 sentences: ...', provider: 'duckai' });
+if (result.status === 'success') console.log(result.answer);
 ```
 
 ---
 
-## 5. 返回契约
+## Supported web AIs
 
-成功：
+| Provider | Login | Status |
+|---|---|---|
+| `duckai` | not needed | **Verified** -- end-to-end, ~9-10s |
+| `qwen` | not needed (guest mode) | **Verified** -- end-to-end, ~34s |
+| `deepseek` | required | **Verified** -- end-to-end with a signed-in profile |
+| `chatgpt` | required | Selectors only; not verified with a paid account |
+| `grok` | required | Experimental -- selectors unverified |
+| `gemini` | required | Experimental -- selectors unverified, ships disabled |
+
+Adding a provider is one file: extend `WebAIProvider` in `src/providers/<id>.js`,
+list it in `config/default.json`, register it in `src/providers/index.js`.
+Timeouts, answer polling, error contracts, logging and failure capture are all
+inherited.
+
+Experimental providers ship **disabled**. To try one:
+
+```json
+// config/local.json
+{ "providers": { "gemini": { "enabled": true } } }
+```
+
+---
+
+## Anti-abuse guard
+
+This tool talks to sites through your own logged-in browser. That is a
+privilege, and the guard exists to keep it from looking like abuse.
+
+| Layer | Default | What it does |
+|---|---|---|
+| Minimum interval | **20s** (+0-8s jitter) | Two calls to the same provider never fire back to back |
+| Cooldown | every **8** calls -> **3 min** | Breaks up long batches |
+| Daily quota | **40** calls/provider | Rolling 24h ceiling |
+| Circuit breaker | **30 min** | Trips automatically on a captcha or access block |
+| Answer cache | 1h | Identical prompts never reach the site twice |
+
+Polling while waiting for an answer is also deliberately **slower and
+irregular** (1.2x-2.4x the base interval) to reduce request volume.
+
+This is demand reduction, not detection evasion. The tool never solves
+CAPTCHAs, never forges logins, and never tries to defeat a rate limit. When a
+site asks for a human, it hands the job to you.
+
+```bash
+ask-web-ai limits      # today's usage vs the caps
+ask-web-ai cache       # cache status; --clear to empty it
+```
+
+For genuinely large batches, use the provider's official API instead -- this
+tool is built for occasional delegation, not throughput.
+
+---
+
+## Result contract
+
+Success:
 
 ```json
 {
   "status": "success",
   "provider": "duckai",
-  "answer": "板块构造是指……",
-  "meta": { "url": "https://duck.ai/", "chars": 81, "elapsedMs": 9490, "truncated": false }
+  "answer": "Plate tectonics describes ...",
+  "meta": { "url": "https://duck.ai/", "chars": 95, "elapsedMs": 9276, "cached": false }
 }
 ```
 
-失败（**永远不抛裸异常，永远给结构化 JSON**）：
+Failure -- always structured, always includes a stable `code`:
 
 ```json
 {
   "status": "error",
   "provider": "deepseek",
-  "error": "DeepSeek is not signed in. …",
+  "error": "DeepSeek is not signed in. ...",
   "code": "login_required",
   "details": { "url": "https://chat.deepseek.com/sign_in" },
-  "meta": { "artifacts": ".../artifacts/2026-09-19T12-01-37-duckai" }
+  "meta": { "artifacts": "~/.agent-web-ai/profiles/edge/artifacts/..." }
 }
 ```
 
-| code | 含义 | 处理方式 |
+| Code | Meaning | What to do |
 |---|---|---|
-| `invalid_input` | prompt 为空 / 参数非法 | 修正调用 |
-| `unknown_provider` | provider 名不存在 | 用 `providers` 命令查看 |
-| `provider_disabled` | 配置里被禁用 | 修改 `config/local.json` |
-| `rate_limited_locally` | **本地防封号保护**拦下了这次调用 | 按提示等待，或换一个 AI；不要硬来 |
-| `login_required` | 网站未登录 | 跑一次 `login --provider X` |
-| `captcha_required` | 出现人机验证 | **人工**在弹出的窗口完成验证后重试 |
-| `access_blocked` | 网络被网站限流/风控 | 稍后重试或换 AI |
-| `selectors_stale` | 网站改版，选择器失效 | 看截图，更新 `src/providers/*.js` |
-| `timeout` | 超时未得到稳定回答 | 加大 `--timeout`，看产物截图 |
-| `browser_unavailable` | 浏览器起不来 | 跑 `browser`；首次启动较慢 |
-| `extraction_failed` | 有回答但提取为空 | 看截图；通常是要新增选择器 |
-| `internal_error` | 其他 | 看 stderr 日志 |
+| `invalid_input` | empty prompt or bad option | fix the call |
+| `unknown_provider` | provider id not recognised | run `providers` |
+| `provider_disabled` | disabled in config | enable in `config/local.json` |
+| `login_required` | site is signed out | run `login --provider <id>` once |
+| `captcha_required` | human verification on screen | solve it in the visible window, then retry |
+| `access_blocked` | site is rate-limiting this network | wait, or use another provider |
+| `selectors_stale` | page layout changed | check the artifact screenshot; a selector needs updating |
+| `timeout` | no stable answer in time | raise `--timeout`, check artifacts |
+| `browser_unavailable` | browser/CDP would not start | run `browser`; first launch is slow |
+| `rate_limited_locally` | the guard refused the call | wait or switch provider; never loop-retry |
+| `extraction_failed` | answer appeared but text was empty | check the screenshot |
+| `internal_error` | anything else | check stderr logs |
 
 ---
 
-## 6. 支持的 Web AI
+## Commands
 
-| provider | 需要登录？ | 实测状态 |
-|---|---|---|
-| `duckai` | 不需要 | ✅ **默认**，Edge 上端到端通过，约 9–10 秒 |
-| `qwen` | 不需要（游客模式） | ✅ Edge 上端到端通过，约 34 秒（含页面加载） |
-| `deepseek` | 需要 | ⚠️ 未登录，已能正确返回 `login_required` |
-| `chatgpt` | 需要 | 选择器参考 Cavendish 基线；未在本机实测（需付费账号） |
-| `grok` | 需要 | 结构已接入；未实证 |
-| ~~`gemini`~~ | — | ❌ **已禁用** |
-
-新增一个 Web AI：
-
-1. 新建 `src/providers/<id>.js`，继承 `WebAIProvider`；
-2. 在 `config/default.json` 的 `providers.<id>` 加配置；
-3. 在 `src/providers/index.js` 注册。
-
-其余（超时、稳定性轮询、错误契约、日志、失败截图）全部继承，无需重写。
-
----
-
-## 7. 故障排查「如何查看失败原因」
-
-任何失败都会自动留证据：
-
-```
-~/.agent-web-ai/profiles/edge/artifacts/<时间>-<provider>/
-├── screenshot.png    失败瞬间的页面截图
-├── page.html         完整 HTML（用于更新选择器）
-└── summary.json      页面文本、URL、错误码、捕获时间
+```bash
+ask-web-ai ask "<prompt>"                 # ask (JSON by default when piped)
+ask-web-ai ask "<prompt>" --text          # human-readable output
+ask-web-ai ask "<prompt>" --no-cache      # bypass the answer cache
+ask-web-ai login --provider deepseek      # one-time login in the dedicated profile
+ask-web-ai browser                        # which browser is used / installed
+ask-web-ai browser --use chrome           # switch browser
+ask-web-ai browser --stop                 # close the window this tool opened
+ask-web-ai providers                      # list providers and login requirements
+ask-web-ai limits                         # usage vs the anti-abuse caps
+ask-web-ai cache [--clear]                # inspect / clear the answer cache
+ask-web-ai status                         # browser + profile + defaults
 ```
 
-路径会直接出现在返回 JSON 的 `meta.artifacts` 字段里。
+---
+
+## Troubleshooting
+
+Every failure leaves evidence:
+
+```
+~/.agent-web-ai/profiles/<browser>/artifacts/<timestamp>-<provider>/
+  screenshot.png    what the page looked like at the moment of failure
+  page.html         full HTML, for updating selectors
+  summary.json      page text, URL, error code, capture time
+```
+
+The path is returned in `meta.artifacts`. Useful flags:
+
+```bash
+ask-web-ai ask "x" -p duckai --log-level debug   # per-selector detail
+ask-web-ai ask "x" -p duckai --dry-run           # validate config, no browser
+ask-web-ai ask "x" -p duckai --timeout 300       # longer answer budget
+```
+
+Common situations:
+
+- **`login_required`** -- run the login command once; the profile remembers it.
+- **`captcha_required`** -- complete the challenge yourself in the visible
+  window. The tool will not and cannot do it for you.
+- **`access_blocked`** -- the site decided your network looks suspicious. Wait,
+  or switch provider. This is never bypassed.
+- **`selectors_stale`** -- the site changed its DOM. Open the artifact
+  screenshot, update the provider's selector list, and re-run.
 
 ---
 
-## 8. 配置
+## Configuration
 
-`config/default.json` 是默认值，机器专属改动放 `config/local.json`（已 gitignore）：
+Defaults live in `config/default.json`. Per-machine overrides go in
+`config/local.json` (git-ignored):
 
 ```bash
 cp config/local.json.example config/local.json
 ```
 
-关键项：
+Key settings: `browser.preferred` (`edge` or `chrome`), `defaults.provider`,
+`defaults.timeoutMs`, `throttle.*`, `cache.*`, `providers.<id>.enabled`.
 
-- `browser.preferred`：`edge`（默认）或 `chrome`
-- `browser.headless`：保持 `false`
-- `defaults.provider`：默认 AI
-- `defaults.timeoutMs`：超时毫秒数
-- `providers.<id>.enabled`：开关某个 AI
-
-环境变量覆盖：`AWA_PROVIDER`、`AWA_TIMEOUT_MS`、`AWA_BROWSER_PORT`、
-`AWA_CHROME_PATH`、`AWA_PROFILE_DIR`、`AWA_LOG_LEVEL`。
+Environment overrides: `AWA_PROVIDER`, `AWA_TIMEOUT_MS`, `AWA_BROWSER_PORT`,
+`AWA_CHROME_PATH`, `AWA_PROFILE_DIR`, `AWA_LOG_LEVEL`.
 
 ---
 
-## 9. 防封号保护（Anti-abuse guard）
+## Design principles
 
-这套机制的目的只有一个：**让本工具的访问节奏和"一个谨慎的真人"没有区别**，
-从而尽可能不触发网站的风控系统。它只是让我们更安静，**从不试图绕过任何限制**。
+1. **Never bypass a gate.** No CAPTCHA solving, no forged logins, no rate-limit
+   evasion, no stealth/anti-detection tricks. Human steps stay human.
+2. **Use your own browser and your own access.** A dedicated profile over CDP,
+   fully isolated from your everyday browsing.
+3. **Two things cross the boundary:** the prompt, and the structured result.
+4. **Failures are diagnosable.** Stable error codes plus screenshot and HTML.
+5. **No over-engineering.** No database, no daemon, no queue.
 
-### 五层保护
+---
 
-| 层 | 默认值 | 作用 |
+## Known limitations
+
+- **Selectors break when sites redesign.** Mitigated by multi-selector fallbacks,
+  failure artifacts, and the `selectors_stale` code -- not eliminated.
+- **Visible browser by default.** Headless mode triggers bot checks on several
+  sites, so the tool drives a real window.
+- **The guard makes batch work slow** on purpose (40/day, 20s apart). For real
+  volume, use an official API.
+- **Not verified:** ChatGPT needs a paid account; Grok and Gemini are
+  experimental.
+- **Concurrency:** each call opens a tab; the profile is shared. Keep it to 2-3.
+- **Answers are not guaranteed.** Web AIs hallucinate. Verify anything critical.
+
+---
+
+## Roadmap
+
+- Task Router: automatic routing between the main model and web AIs
+- Result cache improvements and batch API
+- Provider health checks and a selector `doctor`
+- More providers (Kimi, Z.ai, Copilot)
+
+---
+
+## Project layout
+
+```
+bin/ask-web-ai.js          CLI entry
+src/index.js               public API (askWebAI)
+src/core/ask.js            single entry point; returns structured results, never throws
+src/core/browser.js        Edge/Chrome detection, launch, CDP reuse, switching
+src/core/provider.js       provider base: timeouts, polling, keyboard input, extraction
+src/core/throttle.js       anti-abuse guard: interval, cooldown, quota, breaker
+src/core/cache.js          answer cache
+src/core/artifacts.js      failure forensics: screenshot, HTML, summary
+src/providers/*.js         per-site adapters (pluggable)
+src/mcp-server.js          dependency-free MCP stdio server
+skills/free-web-ai-worker/ agent skill definition
+scripts/probe-*.mjs        development-time selector probes
+tests/                     offline unit tests + live e2e
+```
+
+---
+
+## Credits and prior art
+
+Built by studying -- but not copying -- several excellent projects:
+
+| Project | License | What we took |
 |---|---|---|
-| 调用间隔 | **20 秒** | 同一个 AI 两次调用之间至少等 20 秒（再叠加 0–8 秒随机抖动） |
-| 批量冷却 | 每 **8** 次 → 休息 **3 分钟** | 避免长时间连续节奏 |
-| 每日上限 | **40 次 / 每个 AI** | 折算约 24 小时滚动窗口 |
-| 熔断 | 出现验证码/被封 → 停 **30 分钟** | 网站已经在提醒你了，就不要继续敲 |
-| 缓存 | 1 小时 | 相同问题直接返回上次答案，**完全不产生网络请求** |
+| [ToaruPen/Cavendish](https://github.com/ToaruPen/Cavendish) | ISC | The CDP + persistent-profile architecture; ChatGPT selector baseline |
+| [ljie-PI/web-chat](https://github.com/ljie-PI/web-chat) | MIT | Reusing an already-running browser; answer stability polling |
+| [mrshibly/PhantomAPI](https://github.com/mrshibly/PhantomAPI) | MIT | Response-waiting strategy reference |
+| [STAR-173/LLMSession-Docker](https://github.com/STAR-173/LLMSession-Docker) | MIT | Evaluated and not adopted (headless container triggers bot checks) |
 
-此外，回答等待期间的页面轮询也改成**随机间隔（1.2–2.4 倍）**，
-不再使用固定 500ms 的机械节拍。
+Only runtime dependency: [`playwright-core`](https://github.com/microsoft/playwright) (Apache-2.0),
+which drives the browser you already have instead of downloading another one.
 
-### 用量对照
+## License
 
-- 原来：连续跑 100 次 ≈ 17 分钟，一小时 300+ 次 ← **风险高**
-- 现在：受每日 40 次上限约束，节奏接近真人 ← **风险低**
-
-### 怎么查看 / 调整
-
-```bash
-node bin/ask-web-ai.js limits            # 看今天用了多少、还剩多少、现在能不能调
-node bin/ask-web-ai.js cache             # 看缓存状态
-node bin/ask-web-ai.js cache --clear     # 清空缓存（改了问题想重新问时用）
-
-node bin/ask-web-ai.js ask "问题" --no-cache       # 这次跳过缓存，强制问网站
-node bin/ask-web-ai.js ask "问题" --no-throttle    # 这次跳过限流（不建议）
-```
-
-想改宽松一点，编辑 `config/local.json`：
-
-```json
-{
-  "throttle": {
-    "minIntervalSeconds": 20,
-    "cooldownEvery": 8,
-    "cooldownSeconds": 180,
-    "dailyQuota": 40,
-    "breakerSeconds": 1800
-  },
-  "cache": { "enabled": true, "ttlSeconds": 3600 }
-}
-```
-
-**注意**：把 `dailyQuota` 调高就等于放弃这层保护。建议保持保守值。
-
----
-
-## 10. 设计原则
-
-1. **不绕过任何安全机制。** 不破解接口、不破解验证码、不伪造登录、不规避限流。
-   遇到人工环节就以 `login_required` / `captcha_required` 返回，交给人。
-2. **用你自己的浏览器 + 你自己的登录态。** 专用 Edge 档案通过 CDP 复用，
-   不干扰你日常的 Edge 窗口。
-3. **主 Agent 只看到两个东西**：`ask_web_ai(prompt, provider)` 和一个结构化结果。
-4. **失败可诊断。** 每个错误都有稳定 code；每次失败都有截图和 HTML。
-5. **不过度设计。** 无数据库、无服务端、无队列。
-
----
-
-## 11. 已知限制
-
-- **网站改版会导致选择器失效**。已通过「多选择器回退 + 失败截图 + `selectors_stale` 错误码」降低影响。
-- **默认使用可见窗口**（不用无头模式），因为无头模式在多个网站会触发风控。
-  运行时会有一个 Edge 窗口在后台。
-- **回答提取依赖「内容稳定」判断**，极长回答可能触达超时；可用 `--timeout` 调整。
-- **ChatGPT / Grok 未在本机实测**（需要相应账号）。
-- **并发**：多次调用各开一个标签页，共用同一档案；不建议超过 2–3 个并发。
-- **本地限流会让批量任务变慢**：默认每日 40 次、间隔 20 秒。这是刻意的取舍——
-  宁可慢，也不要把账号置于风险中。需要大批量请改用官方 API。
-- **不保证回答正确性**。网页 AI 会幻觉，重要结果必须复核。
-
----
-
-## 12. 下一阶段（尚未实现）
-
-- **Task Router**：自动区分「复杂任务→主模型」与「简单文本任务→Web AI」。
-- **结果缓存**：相同 prompt 命中缓存，省一次浏览器往返。
-- **批量接口**：一次会话里连续处理多条，减少标签页开销。
-- **Provider 健康检查**：启动时探测各网站可用性，自动挑可用的那个。
-- **选择器自检**：定时跑 `doctor`，提前发现改版失效。
-- **更多 Provider**：Kimi、Z.ai、Copilot 等。
-
----
-
-## 13. 项目结构
-
-```
-bin/ask-web-ai.js          CLI 入口
-src/core/ask.js            唯一对外入口 askWebAI()
-src/core/throttle.js       防封号保护：间隔 / 冷却 / 配额 / 熔断
-src/core/cache.js          答案缓存（相同问题不重复请求）
-src/core/browser.js        Edge/Chrome 探测、启动、CDP 复用、切换、关闭
-src/core/provider.js       Provider 基类：超时、轮询、键盘输入、通用提取
-src/core/config.js         配置加载（default → local → env → 参数）
-src/core/errors.js         错误类型与稳定错误码
-src/core/logger.js         日志（全部走 stderr，stdout 留给 JSON）
-src/core/artifacts.js      失败取证：截图 / HTML / 摘要
-src/providers/*.js         各 Web AI 的站点适配（可插拔）
-src/mcp-server.js          无依赖 MCP stdio 服务
-skills/agent-web-ai/       给 Codex / Cline 等使用的 Skill 定义
-scripts/probe-*.mjs        开发期选择器探测工具
-tests/unit.test.js         10 个离线单元测试
-tests/e2e.live.js          真实链路测试
-```
-
-## 14. 许可证
-
-本仓库代码：MIT。使用的第三方项目许可见第 1 节表格
-（Cavendish: ISC，web-chat / PhantomAPI / LLMSession-Docker: MIT，playwright-core: Apache-2.0）。
+MIT -- see [LICENSE](LICENSE).

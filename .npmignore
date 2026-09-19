@@ -1,0 +1,15 @@
+# The "files" field in package.json is the primary allow-list.
+# This file is a second line of defence for anything added later.
+.github/
+scripts/
+tests/
+.tmp/
+tmp/
+config/local.json
+config/local.json.example
+AGENTS.md
+.gitattributes
+.gitignore
+*.log
+*.tgz
+

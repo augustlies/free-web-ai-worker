@@ -1,0 +1,4 @@
+interface:
+  display_name: "Free Web AI Worker"
+  short_description: "Outsource simple text subtasks to free web AIs"
+  default_prompt: "Use $free-web-ai-worker to hand this summarisation task to a free web AI and give me back the plain text."
