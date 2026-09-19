@@ -164,18 +164,20 @@ async function cmdLogin(args) {
   log.info('  3. Come back to this terminal and press Enter.');
   log.info('');
 
-  await new Promise((resolve) => {
-    if (!process.stdin.isTTY) {
-      log.info('Non-interactive stdin detected; leaving the tab open and returning immediately.');
-      resolve();
-      return;
-    }
-    process.stdin.resume();
-    process.stdin.once('data', resolve);
-  });
+  const interactive = !!process.stdin.isTTY;
+  if (interactive) {
+    await new Promise((resolve) => {
+      process.stdin.resume();
+      process.stdin.once('data', resolve);
+    });
+  } else {
+    // Started by an agent: there is no way for the user to press Enter here, so
+    // keep the tab open and return. Closing it would defeat the whole command.
+    log.info('The login page is open and will stay open. Log in there at your own pace.');
+  }
 
   const url = page.url();
-  await page.close().catch(() => {});
+  if (interactive) await page.close().catch(() => {});
   await detach(browser);
   process.stdout.write(
     JSON.stringify(
@@ -458,6 +460,7 @@ export async function main(argv = process.argv.slice(2)) {
     process.exitCode = 1;
   }
 }
+
 
 
 
