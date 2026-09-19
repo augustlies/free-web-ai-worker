@@ -3,9 +3,12 @@
  *
  *   node scripts/set-identity.mjs --username your-github-username --email 12345678+your-github-username@users.noreply.github.com
  *
- * Replaces the YOUR_GITHUB_USERNAME / YOUR_NAME / YOUR_EMAIL placeholders in
- * README.md, README.zh-CN.md, CHANGELOG.md, package.json and the skill, then
- * sets this repo's local git identity so future commits are attributed to you.
+ * Options:
+ *   --username <gh-user>   required, your GitHub login
+ *   --email <address>      required, use your GitHub noreply address to stay private
+ *   --name "<display>"     optional, defaults to the username
+ *   --rewrite-history      re-author every existing commit to this identity
+ *                          (safe: only run before the repo is ever pushed)
  *
  * Safe to run more than once.
  */
@@ -24,7 +27,7 @@ const email = get('--email');
 const name = get('--name') || username;
 
 if (!username || !email) {
-  console.error('usage: node scripts/set-identity.mjs --username <gh-user> --email <email> [--name "<display name>"]');
+  console.error('usage: node scripts/set-identity.mjs --username <gh-user> --email <email> [--name "<display name>"] [--rewrite-history]');
   process.exit(2);
 }
 if (!/^[A-Za-z0-9-]+$/.test(username)) {
@@ -36,6 +39,42 @@ if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
   process.exit(2);
 }
 
+const git = (a) => spawnSync('git', a, { encoding: 'utf8' });
+
+// 1. Repo-local git identity, so new commits are attributed correctly.
+git(['config', '--local', 'user.name', name]);
+git(['config', '--local', 'user.email', email]);
+console.log(`git identity for this repo: ${name} <${email}>`);
+
+// 2. Optionally re-author the existing commits. Done BEFORE touching files so
+//    the working tree is still clean (the rewrite refuses to run otherwise).
+if (args.includes('--rewrite-history')) {
+  const status = git(['status', '--porcelain']);
+  if ((status.stdout || '').trim()) {
+    console.error('\nRefusing to rewrite history: commit or stash your changes first.');
+    process.exit(1);
+  }
+
+  const count = (git(['rev-list', '--count', 'HEAD']).stdout || '').trim();
+  console.log(`\nRe-authoring ${count} commit(s)...`);
+
+  const res = spawnSync(
+    'git',
+    ['rebase', '--root', '--exec', 'git commit --amend --no-edit --reset-author'],
+    { encoding: 'utf8' },
+  );
+  if (res.status !== 0) {
+    console.error('history rewrite failed:');
+    console.error((res.stdout || '').split('\n').slice(-10).join('\n'));
+    console.error((res.stderr || '').split('\n').slice(-10).join('\n'));
+    console.error('\nThe original history is still reachable via `git reflog`.');
+    process.exit(1);
+  }
+  console.log('Done. Authors now:');
+  console.log(git(['log', '--format=%h  %an <%ae>  %s']).stdout || '');
+}
+
+// 3. Replace the placeholders in tracked files.
 const TARGETS = [
   'package.json',
   'README.md',
@@ -67,53 +106,8 @@ for (const file of TARGETS) {
   }
 }
 
-// Local-only git identity so commits are attributed correctly.
-const run = (cmdArgs) => spawnSync('git', cmdArgs, { encoding: 'utf8' });
-run(['config', '--local', 'user.name', name]);
-run(['config', '--local', 'user.email', email]);
-
-console.log(`\nDone. ${touched} file(s) updated.`);
-console.log(`git identity for this repo: ${name} <${email}>`);
-
-// Rewrite the author of every existing commit so the public history shows the
-// real owner instead of the placeholder identity used during development.
-if (args.includes('--rewrite-history')) {
-  console.log('\nRewriting commit authors...');
-  const status = run(['status', '--porcelain']);
-  if ((status.stdout || '').trim()) {
-    console.error('Refusing to rewrite history: commit or stash your changes first.');
-    process.exit(1);
-  }
-  const current = run(['branch', '--show-current']).stdout?.trim() || 'main';
-  const filter = [
-    'git',
-    '-c',
-    `user.name=${name}`,
-    '-c',
-    `user.email=${email}`,
-    'filter-branch',
-    '-f',
-    '--env-filter',
-    `export GIT_AUTHOR_NAME="${name}" GIT_AUTHOR_EMAIL="${email}" GIT_COMMITTER_NAME="${name}" GIT_COMMITTER_EMAIL="${email}"`,
-    '--',
-    '--all',
-  ];
-  const res = spawnSync(filter[0], filter.slice(1), { encoding: 'utf8', shell: process.platform === 'win32' });
-  if (res.status !== 0) {
-    console.error('history rewrite failed:');
-    console.error((res.stderr || '').split('\n').slice(-15).join('\n'));
-    process.exit(1);
-  }
-  // Point the branch at the rewritten history and drop the backup ref.
-  run(['update-ref', '-d', 'refs/original/refs/heads/' + current]);
-  console.log('Commit authors rewritten.');
-  console.log('\nAuthors now:');
-  console.log(run(['log', '--format=%h  %an <%ae>  %s']).stdout || '');
-}
-
-console.log('\nNext:');
+console.log(`\n${touched} file(s) updated.`);
+console.log('\nNext (only when you are ready to publish):');
 console.log('  git add -A && git commit -m "Fill in repository identity"');
 console.log(`  git remote add origin https://github.com/${username}/free-web-ai-worker.git`);
 console.log('  git push -u origin main');
-
-
