@@ -16,8 +16,9 @@ import { readFileSync } from 'node:fs';
 import { askWebAI } from './core/ask.js';
 import { knownProviderIds } from './providers/index.js';
 import { loadConfig } from './core/config.js';
+import pkg from '../package.json' with { type: 'json' };
 
-const SERVER_INFO = { name: 'agent-web-ai', version: '0.1.0-mvp' };
+const SERVER_INFO = { name: 'free-web-ai-worker', version: pkg.version };
 const PROTOCOL_VERSION = '2024-11-05';
 
 const TOOL = {
@@ -116,4 +117,4 @@ process.stdin.on('data', (chunk) => {
   }
 });
 
-process.stderr.write(`[mcp] agent-web-ai ready (providers: ${knownProviderIds().join(', ')})\n`);
+process.stderr.write(`[mcp] free-web-ai-worker ready (providers: ${knownProviderIds().join(', ')})\n`);

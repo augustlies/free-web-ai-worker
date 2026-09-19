@@ -1,5 +1,5 @@
 /**
- * CLI for the Agent Web AI skill.
+ * CLI for free-web-ai-worker.
  *
  *   ask-web-ai ask "<prompt>" [--provider qwen] [--json]
  *   ask-web-ai login [--provider deepseek]     open the browser for a one-time login
@@ -30,10 +30,11 @@ import {
   writeLocalConfig,
 } from './core/browser.js';
 import { createProvider, knownProviderIds } from './providers/index.js';
+import pkg from '../package.json' with { type: 'json' };
 import { usageReport, DEFAULT_THROTTLE } from './core/throttle.js';
 import { cacheStats, cacheClear } from './core/cache.js';
 
-const USAGE = `Agent Web AI — delegate simple text subtasks to a free web AI chat.
+const USAGE = `free-web-ai-worker — delegate simple text subtasks to a free web AI chat.
 
 Usage:
   ask-web-ai ask [prompt] [options]        Ask a web AI and print the answer (JSON by default)
@@ -448,7 +449,7 @@ export async function main(argv = process.argv.slice(2)) {
         await cmdStatus(args);
         break;
       case 'version':
-        process.stdout.write('agent-web-ai 0.2.0-mvp\n');
+        process.stdout.write(`free-web-ai-worker ${pkg.version}\n`);
         break;
       default:
         process.stderr.write(`Unknown command "${command}"\n\n${USAGE}`);
