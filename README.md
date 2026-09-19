@@ -382,6 +382,19 @@ Built by studying -- but not copying -- several excellent projects:
 Only runtime dependency: [`playwright-core`](https://github.com/microsoft/playwright) (Apache-2.0),
 which drives the browser you already have instead of downloading another one.
 
+## Development note
+
+This project was built with heavy AI assistance -- the "vibe coding"
+approach -- by a non-developer. The concept, the provider abstraction, the
+safety design and every acceptance test were specified by the author; the code
+was written in collaboration with AI, and every claim in this README was
+verified by actually running it.
+
+If you spot something unidiomatic, that is why. Issues, corrections and pull
+requests are genuinely welcome.
+
+---
+
 ## License
 
 MIT -- see [LICENSE](LICENSE).

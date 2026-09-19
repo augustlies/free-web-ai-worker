@@ -357,6 +357,16 @@ tests/                     离线单元测试 + 真实链路测试
 唯一运行时依赖：[`playwright-core`](https://github.com/microsoft/playwright)（Apache-2.0），
 驱动你已经装好的浏览器，而不是再下载一个。
 
+## 开发说明
+
+本项目由一位非开发者借助 AI 大量协助（也就是所谓 "vibe coding"）完成。
+产品构想、Provider 抽象、安全设计和每一项验收标准都由作者提出；
+代码在 AI 协作下写成，README 中的每一项功能声明都经过实际运行验证。
+
+如果你发现代码风格不够地道，原因就在这里。欢迎提 Issue、纠错和 PR。
+
+---
+
 ## 许可证
 
 MIT —— 见 [LICENSE](LICENSE)。
