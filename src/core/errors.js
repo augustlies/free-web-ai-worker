@@ -28,6 +28,8 @@ export const ErrorCodes = {
   INVALID_INPUT: 'invalid_input',
   /** Provider explicitly disabled by config. */
   PROVIDER_DISABLED: 'provider_disabled',
+  /** Our own anti-abuse guard refused the call (interval / quota / breaker). */
+  RATE_LIMITED_LOCALLY: 'rate_limited_locally',
   /** Anything else. */
   INTERNAL: 'internal_error',
 };
@@ -65,5 +67,6 @@ export function toWebAIError(err, fallbackCode = ErrorCodes.INTERNAL) {
   const code = err && err.name === 'TimeoutError' ? ErrorCodes.TIMEOUT : fallbackCode;
   return new WebAIError(message, code, { cause: err && err.name ? err.name : undefined });
 }
+
 
 

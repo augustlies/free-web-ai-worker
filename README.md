@@ -13,7 +13,8 @@
 单次问答约 **9–10 秒**。
 
 > 浏览器偏好：**Microsoft Edge**（可在配置里换成 Chrome）。
-> 已按需求**移除 Gemini**（`providers.gemini.enabled = false`）。
+> 已按需求**移除 Gemini**。
+> **内置防封号保护**：调用间隔、批量冷却、每日上限、触发验证码自动熔断、相同问题走缓存 —— 默认全部开启。
 
 ---
 
@@ -94,6 +95,7 @@ node bin/ask-web-ai.js browser --use chrome    # 切换到 Chrome
 node bin/ask-web-ai.js browser --stop          # 关掉工具开的那个浏览器窗口
 
 node bin/ask-web-ai.js providers               # 有哪些 AI 可以用？
+node bin/ask-web-ai.js limits                  # 今天用了多少？还能用吗？
 node bin/ask-web-ai.js status                  # 整体状态
 
 node bin/ask-web-ai.js ask "问题"                          # 问一句（默认 Duck.ai）
@@ -179,7 +181,8 @@ if (r.status === 'success') console.log(r.answer);
 |---|---|---|
 | `invalid_input` | prompt 为空 / 参数非法 | 修正调用 |
 | `unknown_provider` | provider 名不存在 | 用 `providers` 命令查看 |
-| `provider_disabled` | 配置里被禁用（如 Gemini） | 修改 `config/local.json` |
+| `provider_disabled` | 配置里被禁用 | 修改 `config/local.json` |
+| `rate_limited_locally` | **本地防封号保护**拦下了这次调用 | 按提示等待，或换一个 AI；不要硬来 |
 | `login_required` | 网站未登录 | 跑一次 `login --provider X` |
 | `captcha_required` | 出现人机验证 | **人工**在弹出的窗口完成验证后重试 |
 | `access_blocked` | 网络被网站限流/风控 | 稍后重试或换 AI |
@@ -248,7 +251,60 @@ cp config/local.json.example config/local.json
 
 ---
 
-## 9. 设计原则
+## 9. 防封号保护（Anti-abuse guard）
+
+这套机制的目的只有一个：**让本工具的访问节奏和"一个谨慎的真人"没有区别**，
+从而尽可能不触发网站的风控系统。它只是让我们更安静，**从不试图绕过任何限制**。
+
+### 五层保护
+
+| 层 | 默认值 | 作用 |
+|---|---|---|
+| 调用间隔 | **20 秒** | 同一个 AI 两次调用之间至少等 20 秒（再叠加 0–8 秒随机抖动） |
+| 批量冷却 | 每 **8** 次 → 休息 **3 分钟** | 避免长时间连续节奏 |
+| 每日上限 | **40 次 / 每个 AI** | 折算约 24 小时滚动窗口 |
+| 熔断 | 出现验证码/被封 → 停 **30 分钟** | 网站已经在提醒你了，就不要继续敲 |
+| 缓存 | 1 小时 | 相同问题直接返回上次答案，**完全不产生网络请求** |
+
+此外，回答等待期间的页面轮询也改成**随机间隔（1.2–2.4 倍）**，
+不再使用固定 500ms 的机械节拍。
+
+### 用量对照
+
+- 原来：连续跑 100 次 ≈ 17 分钟，一小时 300+ 次 ← **风险高**
+- 现在：受每日 40 次上限约束，节奏接近真人 ← **风险低**
+
+### 怎么查看 / 调整
+
+```bash
+node bin/ask-web-ai.js limits            # 看今天用了多少、还剩多少、现在能不能调
+node bin/ask-web-ai.js cache             # 看缓存状态
+node bin/ask-web-ai.js cache --clear     # 清空缓存（改了问题想重新问时用）
+
+node bin/ask-web-ai.js ask "问题" --no-cache       # 这次跳过缓存，强制问网站
+node bin/ask-web-ai.js ask "问题" --no-throttle    # 这次跳过限流（不建议）
+```
+
+想改宽松一点，编辑 `config/local.json`：
+
+```json
+{
+  "throttle": {
+    "minIntervalSeconds": 20,
+    "cooldownEvery": 8,
+    "cooldownSeconds": 180,
+    "dailyQuota": 40,
+    "breakerSeconds": 1800
+  },
+  "cache": { "enabled": true, "ttlSeconds": 3600 }
+}
+```
+
+**注意**：把 `dailyQuota` 调高就等于放弃这层保护。建议保持保守值。
+
+---
+
+## 10. 设计原则
 
 1. **不绕过任何安全机制。** 不破解接口、不破解验证码、不伪造登录、不规避限流。
    遇到人工环节就以 `login_required` / `captcha_required` 返回，交给人。
@@ -260,7 +316,7 @@ cp config/local.json.example config/local.json
 
 ---
 
-## 10. 已知限制
+## 11. 已知限制
 
 - **网站改版会导致选择器失效**。已通过「多选择器回退 + 失败截图 + `selectors_stale` 错误码」降低影响。
 - **默认使用可见窗口**（不用无头模式），因为无头模式在多个网站会触发风控。
@@ -268,11 +324,13 @@ cp config/local.json.example config/local.json
 - **回答提取依赖「内容稳定」判断**，极长回答可能触达超时；可用 `--timeout` 调整。
 - **ChatGPT / Grok 未在本机实测**（需要相应账号）。
 - **并发**：多次调用各开一个标签页，共用同一档案；不建议超过 2–3 个并发。
+- **本地限流会让批量任务变慢**：默认每日 40 次、间隔 20 秒。这是刻意的取舍——
+  宁可慢，也不要把账号置于风险中。需要大批量请改用官方 API。
 - **不保证回答正确性**。网页 AI 会幻觉，重要结果必须复核。
 
 ---
 
-## 11. 下一阶段（尚未实现）
+## 12. 下一阶段（尚未实现）
 
 - **Task Router**：自动区分「复杂任务→主模型」与「简单文本任务→Web AI」。
 - **结果缓存**：相同 prompt 命中缓存，省一次浏览器往返。
@@ -283,11 +341,13 @@ cp config/local.json.example config/local.json
 
 ---
 
-## 12. 项目结构
+## 13. 项目结构
 
 ```
 bin/ask-web-ai.js          CLI 入口
 src/core/ask.js            唯一对外入口 askWebAI()
+src/core/throttle.js       防封号保护：间隔 / 冷却 / 配额 / 熔断
+src/core/cache.js          答案缓存（相同问题不重复请求）
 src/core/browser.js        Edge/Chrome 探测、启动、CDP 复用、切换、关闭
 src/core/provider.js       Provider 基类：超时、轮询、键盘输入、通用提取
 src/core/config.js         配置加载（default → local → env → 参数）
@@ -302,7 +362,7 @@ tests/unit.test.js         10 个离线单元测试
 tests/e2e.live.js          真实链路测试
 ```
 
-## 13. 许可证
+## 14. 许可证
 
 本仓库代码：MIT。使用的第三方项目许可见第 1 节表格
 （Cavendish: ISC，web-chat / PhantomAPI / LLMSession-Docker: MIT，playwright-core: Apache-2.0）。

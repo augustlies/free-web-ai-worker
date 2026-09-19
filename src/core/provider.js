@@ -304,10 +304,22 @@ export class WebAIProvider {
     let sawNew = false;
     let polls = 0;
 
+    // Polling reads the page and every read is a request the site can see, so
+    // we deliberately poll LESS than the configured base rate: 1.2x-2.4x the
+    // poll time (600-1200ms by default). Answer detection still feels instant
+    // because completion is confirmed by a stability window, not by the tick.
+    // This is purely demand reduction - it does not disguise anything.
+    const nextDelay = () => {
+      const base = Math.max(500, pollMs);
+      const factor = 1.2 + Math.random() * 1.2;
+      return Math.round(base * factor);
+    };
+
     while (Date.now() < deadline) {
       if (polls++ === 0) log.info('Waiting for answer...', { provider: this.id });
-      await new Promise((r) => setTimeout(r, pollMs));
+      await new Promise((r) => setTimeout(r, nextDelay()));
 
+      // Cheap first: only read the DOM when we have reason to.
       const count = await this.countAnswers(page);
       const generating = await this.isGenerating(page);
       const text = await this.readLatestAnswer(page);
@@ -461,6 +473,7 @@ export class WebAIProvider {
     return this.firstMatch(page, this.selectors.SEND_BUTTON || [], { timeout: 4000 });
   }
 }
+
 
 
 

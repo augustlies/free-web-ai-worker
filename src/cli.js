@@ -30,6 +30,8 @@ import {
   writeLocalConfig,
 } from './core/browser.js';
 import { createProvider, knownProviderIds } from './providers/index.js';
+import { usageReport, DEFAULT_THROTTLE } from './core/throttle.js';
+import { cacheStats, cacheClear } from './core/cache.js';
 
 const USAGE = `Agent Web AI — delegate simple text subtasks to a free web AI chat.
 
@@ -40,6 +42,8 @@ Usage:
   ask-web-ai browser --use <edge|chrome>   Switch which browser to drive
   ask-web-ai browser --stop                Close the browser this tool opened
   ask-web-ai providers                     List available web AIs
+  ask-web-ai limits                        Show today's usage vs the anti-abuse caps
+  ask-web-ai cache [--clear]               Show or clear cached answers
   ask-web-ai status                        Show browser / profile / provider status
   ask-web-ai --help                        Show this help
 
@@ -53,6 +57,8 @@ ask options:
       --text             Human-readable plain text output
       --log-level <lvl>  silent|error|warn|info|debug (default: info)
       --dry-run          Validate config/provider without opening a browser
+      --no-throttle      Skip the local anti-abuse guard (not recommended)
+      --no-cache         Ignore any cached answer and ask the site again
 
 Examples:
   ask-web-ai ask "Summarise this in 3 bullet points: ..."
@@ -104,6 +110,8 @@ function buildOptions(flags, positionalPrompt) {
     stableMs: flags['--stable'] ? Number(flags['--stable']) * 1000 : undefined,
     logLevel: typeof flags['--log-level'] === 'string' ? flags['--log-level'] : undefined,
     dryRun: !!flags['--dry-run'],
+    noThrottle: !!flags['--no-throttle'],
+    noCache: !!flags['--no-cache'],
   };
 }
 
@@ -308,6 +316,70 @@ async function cmdProviders(args) {
   }
 }
 
+async function cmdLimits(args) {
+  const cfg = loadConfig();
+  const installed = detectInstalledBrowsers();
+  const active = resolveBrowser(cfg);
+  if (!active) {
+    process.stdout.write(JSON.stringify({ status: 'error', error: 'No browser found' }, null, 2) + '\n');
+    process.exitCode = 1;
+    return;
+  }
+  const profileDir = profileDirFor(cfg, active.id);
+  const report = {
+    status: 'success',
+    browser: active.id,
+    profileDir,
+    rules: { ...DEFAULT_THROTTLE, ...(cfg.throttle || {}) },
+    usage: usageReport(profileDir, knownProviderIds(), cfg.throttle),
+  };
+  if (!args.flags['--json'] && (args.flags['--text'] || process.stdout.isTTY)) {
+    const r = report.rules;
+    process.stdout.write(`Anti-abuse guard: ${r.enabled ? 'ON' : 'OFF'}\n`);
+    process.stdout.write(`  minimum gap between calls : ${r.minIntervalSeconds}s\n`);
+    process.stdout.write(`  longer rest every         : ${r.cooldownEvery} calls → ${r.cooldownSeconds}s\n`);
+    process.stdout.write(`  daily cap per AI          : ${r.dailyQuota}\n`);
+    process.stdout.write(`  pause after captcha/block : ${Math.round(r.breakerSeconds / 60)} min\n\n`);
+    process.stdout.write('Provider     used today   remaining   last call      next call\n');
+    for (const u of report.usage) {
+      const last = u.secondsSinceLastCall === null ? 'never' : u.secondsSinceLastCall + 's ago';
+      const next = u.blockedReason ? 'BLOCKED' : u.nextCallAllowedInSeconds > 0 ? `in ${u.nextCallAllowedInSeconds}s` : 'now';
+      process.stdout.write(
+        `${u.provider.padEnd(11)}  ${String(u.usedToday + '/' + u.dailyQuota).padEnd(11)}  ${String(u.remainingToday).padEnd(9)}  ${last.padEnd(13)}  ${next}\n`,
+      );
+      if (u.blockedReason) process.stdout.write(`             ↳ ${u.blockedReason}\n`);
+    }
+    return;
+  }
+  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+}
+
+async function cmdCache(args) {
+  const cfg = loadConfig();
+  const active = resolveBrowser(cfg);
+  if (!active) {
+    process.stdout.write(JSON.stringify({ status: 'error', error: 'No browser found' }, null, 2) + '\n');
+    process.exitCode = 1;
+    return;
+  }
+  const profileDir = profileDirFor(cfg, active.id);
+  if (args.flags['--clear']) {
+    const removed = cacheClear(profileDir);
+    process.stdout.write(JSON.stringify({ status: 'success', action: 'cache_cleared', removed }, null, 2) + '\n');
+    return;
+  }
+  const stats = cacheStats(profileDir);
+  const report = { status: 'success', enabled: cfg.cache?.enabled !== false, ttlSeconds: cfg.cache?.ttlSeconds ?? 3600, ...stats };
+  if (!args.flags['--json'] && (args.flags['--text'] || process.stdout.isTTY)) {
+    process.stdout.write(`Cache: ${report.enabled ? 'ON' : 'OFF'} (kept for ${Math.round(report.ttlSeconds / 60)} min)\n`);
+    process.stdout.write(`Entries: ${report.entries}\n`);
+    process.stdout.write(`Location: ${report.dir}\n`);
+    process.stdout.write(`Clear with: ask-web-ai cache --clear\n`);
+    return;
+  }
+  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+}
+
 async function cmdStatus(args) {
   const cfg = loadConfig();
   const detail = await probeCdp(cfg.browser.port);
@@ -364,6 +436,12 @@ export async function main(argv = process.argv.slice(2)) {
       case 'providers':
         await cmdProviders(args);
         break;
+      case 'limits':
+        await cmdLimits(args);
+        break;
+      case 'cache':
+        await cmdCache(args);
+        break;
       case 'status':
         await cmdStatus(args);
         break;
@@ -380,5 +458,8 @@ export async function main(argv = process.argv.slice(2)) {
     process.exitCode = 1;
   }
 }
+
+
+
 
 

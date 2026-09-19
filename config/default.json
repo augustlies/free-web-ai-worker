@@ -16,6 +16,21 @@
     "maxAnswerChars": 200000,
     "newChat": true
   },
+  "throttle": {
+    "_comment": "Anti-abuse protection. Makes this tool's traffic look like careful human use. Values are conservative on purpose.",
+    "enabled": true,
+    "minIntervalSeconds": 20,
+    "cooldownEvery": 8,
+    "cooldownSeconds": 180,
+    "dailyQuota": 40,
+    "breakerSeconds": 1800,
+    "jitterSeconds": 8
+  },
+  "cache": {
+    "_comment": "Identical prompts are answered from cache instead of calling the web AI again.",
+    "enabled": true,
+    "ttlSeconds": 3600
+  },
   "providers": {
     "duckai": {
       "enabled": true,
@@ -61,3 +76,4 @@
     "level": "info"
   }
 }
+

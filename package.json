@@ -17,7 +17,7 @@
     "login": "node ./bin/ask-web-ai.js login",
     "status": "node ./bin/ask-web-ai.js status",
     "providers": "node ./bin/ask-web-ai.js providers",
-    "test": "node --test tests/unit.test.js",
+    "test": "node --test tests/unit.test.js tests/throttle.test.js",
     "test:e2e": "node ./tests/e2e.live.js",
     "mcp": "node ./src/mcp-server.js"
   },
@@ -25,4 +25,5 @@
     "playwright-core": "1.63.0"
   }
 }
+
 
