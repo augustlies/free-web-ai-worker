@@ -1,0 +1,63 @@
+{
+  "browser": {
+    "port": 9222,
+    "headless": false,
+    "profileDir": "~/.agent-web-ai/chrome-profile",
+    "chromePath": null,
+    "startupTimeoutMs": 45000,
+    "keepAlive": true
+  },
+  "defaults": {
+    "provider": "duckai",
+    "timeoutMs": 120000,
+    "stableMs": 3000,
+    "pollMs": 500,
+    "maxAnswerChars": 200000,
+    "newChat": true
+  },
+  "providers": {
+    "gemini": {
+      "enabled": true,
+      "displayName": "Google Gemini",
+      "url": "https://gemini.google.com/app",
+      "requiresLogin": true
+    },
+    "deepseek": {
+      "enabled": true,
+      "displayName": "DeepSeek",
+      "url": "https://chat.deepseek.com/",
+      "requiresLogin": true
+    },
+    "chatgpt": {
+      "enabled": true,
+      "displayName": "ChatGPT",
+      "url": "https://chatgpt.com/",
+      "requiresLogin": true
+    },
+    "grok": {
+      "enabled": true,
+      "displayName": "Grok",
+      "url": "https://grok.com/",
+      "requiresLogin": true
+    },
+    "qwen": {
+      "enabled": true,
+      "displayName": "Qwen Chat",
+      "url": "https://chat.qwen.ai/",
+      "requiresLogin": false,
+      "note": "Guest mode verified 2026-09-19; signing in raises rate limits."
+    },
+    "duckai": {
+      "enabled": true,
+      "displayName": "Duck.ai",
+      "url": "https://duck.ai/",
+      "requiresLogin": false
+    }
+  },
+  "logging": {
+    "level": "info"
+  }
+}
+
+
+

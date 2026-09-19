@@ -1,0 +1,28 @@
+{
+  "name": "agent-web-ai",
+  "version": "0.1.0-mvp",
+  "description": "Agent Web AI subtask skill: delegate simple text subtasks from a main agent to free web-based AI chats via a real Chrome browser.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "ask-web-ai": "./bin/ask-web-ai.js"
+  },
+  "main": "./src/index.js",
+  "scripts": {
+    "ask": "node ./bin/ask-web-ai.js ask",
+    "login": "node ./bin/ask-web-ai.js login",
+    "status": "node ./bin/ask-web-ai.js status",
+    "providers": "node ./bin/ask-web-ai.js providers",
+    "test": "node --test tests/unit.test.js",
+    "test:e2e": "node ./tests/e2e.live.js",
+    "mcp": "node ./src/mcp-server.js"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
+}
+

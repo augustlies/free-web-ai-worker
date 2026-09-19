@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy to config/local.json to override defaults on this machine. Never commit real values.",
+  "browser": {
+    "port": 9222,
+    "headless": false,
+    "profileDir": "~/.agent-web-ai/chrome-profile",
+    "chromePath": null,
+    "startupTimeoutMs": 45000
+  },
+  "defaults": {
+    "provider": "duckai",
+    "timeoutMs": 120000
+  }
+}
