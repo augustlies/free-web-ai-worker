@@ -59,10 +59,10 @@ Edge 或 Chrome，通过**独立隔离的档案**复用你自己的登录状态�
 
 ```bash
 # 直接从 GitHub 运行 —— 无需安装，也无需先发布到 npm
-npx -y github:YOUR_GITHUB_USERNAME/free-web-ai-worker ask "回答 OK" --json
+npx -y github:augustlies/free-web-ai-worker ask "回答 OK" --json
 
 # 或者克隆到本地运行
-git clone https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker.git
+git clone https://github.com/augustlies/free-web-ai-worker.git
 cd free-web-ai-worker
 npm install
 node bin/ask-web-ai.js ask "回答 OK" --json

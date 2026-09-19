@@ -4,14 +4,14 @@
   "description": "Delegate simple, text-only subtasks from an AI coding agent to free web-based AI chats through a real Edge/Chrome browser.",
   "type": "module",
   "license": "MIT",
-  "author": "YOUR_NAME <YOUR_EMAIL>",
+  "author": "augustlies <304962398+augustlies@users.noreply.github.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker.git"
+    "url": "git+https://github.com/augustlies/free-web-ai-worker.git"
   },
-  "homepage": "https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker#readme",
+  "homepage": "https://github.com/augustlies/free-web-ai-worker#readme",
   "bugs": {
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker/issues"
+    "url": "https://github.com/augustlies/free-web-ai-worker/issues"
   },
   "keywords": [
     "ai-agent",

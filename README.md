@@ -65,10 +65,10 @@ Requires **Node.js >= 20** and **Microsoft Edge or Google Chrome**.
 
 ```bash
 # Run straight from GitHub -- no install, no publish required
-npx -y github:YOUR_GITHUB_USERNAME/free-web-ai-worker ask "Say OK" --json
+npx -y github:augustlies/free-web-ai-worker ask "Say OK" --json
 
 # Or clone and run locally
-git clone https://github.com/YOUR_GITHUB_USERNAME/free-web-ai-worker.git
+git clone https://github.com/augustlies/free-web-ai-worker.git
 cd free-web-ai-worker
 npm install
 node bin/ask-web-ai.js ask "Say OK" --json

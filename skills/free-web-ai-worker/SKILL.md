@@ -37,14 +37,14 @@ Do these yourself instead:
 Straight from GitHub -- no install step, no publish required:
 
 ```bash
-npx -y github:YOUR_GITHUB_USERNAME/free-web-ai-worker ask "<prompt>" --provider duckai --timeout 120 --json
+npx -y github:augustlies/free-web-ai-worker ask "<prompt>" --provider duckai --timeout 120 --json
 ```
 
 Long input without shell-escaping:
 
 ```bash
-npx -y github:YOUR_GITHUB_USERNAME/free-web-ai-worker ask --file ./subtask.txt --provider duckai --json
-cat notes.md | npx -y github:YOUR_GITHUB_USERNAME/free-web-ai-worker ask --stdin --provider duckai --json
+npx -y github:augustlies/free-web-ai-worker ask --file ./subtask.txt --provider duckai --json
+cat notes.md | npx -y github:augustlies/free-web-ai-worker ask --stdin --provider duckai --json
 ```
 
 If the tool is already installed globally or locally, use it directly:
