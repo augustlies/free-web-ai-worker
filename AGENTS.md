@@ -12,9 +12,13 @@ simple text-only subtasks to a free web AI chat through a real Edge/Chrome brows
 3. **Never bypass a gate.** No CAPTCHA solving, no Cloudflare evasion, no login
    forgery, no rate-limit evasion, no stealth/anti-detection tricks. Detect and
    report instead (`login_required`, `captcha_required`, `access_blocked`).
-4. Site-specific knowledge lives **only** in `src/providers/<id>.js`
+4. The Task Router (`src/core/router.js`) is a **pure function** -- no
+   network, no config, no side effects. It must stay that way: deciding whether
+   to save money must never itself cost money. Keep its verdicts advisory and
+   always return reasons.
+5. Site-specific knowledge lives **only** in `src/providers/<id>.js`
    (selectors + behaviour). Shared flow lives in `src/core/provider.js`.
-5. Every provider must declare `INPUT`, `ANSWER`, `SEND_BUTTON`, `STOP_BUTTON`
+6. Every provider must declare `INPUT`, `ANSWER`, `SEND_BUTTON`, `STOP_BUTTON`
    selector lists in `static selectors`. Prefer 3+ fallbacks.
 
 ## Adding a provider

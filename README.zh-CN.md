@@ -53,6 +53,45 @@ Edge 或 Chrome，通过**独立隔离的档案**复用你自己的登录状态�
 
 ---
 
+## Task Router（任务路由）
+
+动手之前，可以先问一句：这个任务到底值不值得外包？
+
+```bash
+ask-web-ai route "总结这篇文章"                    # -> DELEGATE
+ask-web-ai route "重构认证模块"                     # -> KEEP
+ask-web-ai route --file tasks.txt                  # 每行一个任务
+cat tasks.txt | ask-web-ai route --stdin --json    # 批量，机器可读
+```
+
+它是**规则判断，不调用 AI** —— 判断"要不要省钱"这件事本身不能花钱。它读取任务描述，
+对照"可外包的形状"（总结、翻译、分类、提取、改写、排版）和"必须自己做的信号"
+（需要仓库上下文、要改文件、要用工具、多步骤、要最新事实、要工程判断）打分，然后给出结论和理由：
+
+```json
+{
+  "status": "success",
+  "task": "把 100 个关键词简单分类",
+  "decision": "delegate",
+  "confidence": "low",
+  "score": 4,
+  "taskType": "classify",
+  "suggestedProvider": "duckai",
+  "advice": "Send this to a web AI and use only the returned text.",
+  "reasons": ["+ classify (\"分类\")"]
+}
+```
+
+任务携带的文本越大，得分越高 —— 因为那正是会占满主模型上下文的负担。
+任何硬性阻断信号（仓库上下文、改文件、用工具）都会让任务留在主模型，无论措辞多像可外包。
+
+**这只是建议。** 它是模式匹配，对形状清晰的任务可靠，对模糊任务只能算提示 ——
+所以每个结论都带置信度和理由，而且 `decision` 从不强制执行。你不同意时直接忽略即可。
+
+三种用法都有：CLI 命令、MCP 工具（`route_task`）、Node 导出（`routeTask`、`classifyTask`、`routeTasks`）。
+
+---
+
 ## 安装
 
 需要 **Node.js >= 20**，以及 **Microsoft Edge 或 Google Chrome**。
@@ -241,6 +280,7 @@ ask-web-ai login --provider deepseek      # 在专用档案里做一次性登录
 ask-web-ai browser                        # 当前使用的浏览器 / 已安装的浏览器
 ask-web-ai browser --use chrome           # 切换浏览器
 ask-web-ai browser --stop                 # 关闭本工具打开的窗口
+ask-web-ai route "<任务>"                 # 该外包还是自己做？（不联网）
 ask-web-ai providers                      # 列出 Provider 及登录要求
 ask-web-ai limits                         # 用量 vs 各项上限
 ask-web-ai cache [--clear]                # 查看 / 清空答案缓存

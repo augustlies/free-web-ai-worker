@@ -32,6 +32,23 @@ Do these yourself instead:
 - multi-step work where later steps depend on what you discover
 - tasks requiring current, verified facts (web AI may hallucinate)
 
+## Should you delegate at all?
+
+Ask the router before delegating large or ambiguous work. It is a deterministic
+heuristic that makes **no network call** and costs nothing:
+
+```bash
+ask-web-ai route "Summarise this article"      # -> DELEGATE
+ask-web-ai route "Refactor the auth module"    # -> KEEP
+```
+
+Or over MCP, call the `route_task` tool with `{ task }` (or `{ tasks: [...] }`).
+
+Treat the verdict as advice, not a rule. A `keep` verdict means the task needs
+context, tools or judgement the web AI does not have. A `delegate` verdict means
+the work is a text transformation: summarise, translate, classify, extract,
+rewrite or reformat.
+
 ## How to call it
 
 Straight from GitHub -- no install step, no publish required:

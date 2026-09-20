@@ -6,8 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Task Router** -- a deterministic, zero-cost heuristic that decides whether a
+  task should be delegated to a web AI or kept by the main model. Exposed as the
+  `route` CLI command, the `route_task` MCP tool and Node exports
+  (`routeTask`, `classifyTask`, `routeTasks`). Scores delegable task shapes
+  against hard blockers, rewards large payloads, and always reports its reasoning
+  and a confidence level. Never makes a network call.
+
 ### Planned
-- Task Router: automatic routing between the main model and web AIs
 - Batch API and improved result caching
 - Provider health checks and a selector `doctor`
 - Additional providers (Kimi, Z.ai, Copilot)

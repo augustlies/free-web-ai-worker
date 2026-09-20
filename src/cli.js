@@ -33,6 +33,7 @@ import { createProvider, knownProviderIds } from './providers/index.js';
 import pkg from '../package.json' with { type: 'json' };
 import { usageReport, DEFAULT_THROTTLE } from './core/throttle.js';
 import { cacheStats, cacheClear } from './core/cache.js';
+import { routeTask, routeTasks } from './core/router.js';
 
 const USAGE = `free-web-ai-worker — delegate simple text subtasks to a free web AI chat.
 
@@ -43,6 +44,7 @@ Usage:
   ask-web-ai browser --use <edge|chrome>   Switch which browser to drive
   ask-web-ai browser --stop                Close the browser this tool opened
   ask-web-ai providers                     List available web AIs
+  ask-web-ai route "<task>"                Decide delegate vs keep (no network call)
   ask-web-ai limits                        Show today's usage vs the anti-abuse caps
   ask-web-ai cache [--clear]               Show or clear cached answers
   ask-web-ai status                        Show browser / profile / provider status
@@ -319,6 +321,60 @@ async function cmdProviders(args) {
   }
 }
 
+async function cmdRoute(args) {
+  const cfg = loadConfig();
+  const json = args.flags['--json'] || !process.stdout.isTTY;
+
+  let tasks = null;
+  if (args.flags['--file']) {
+    tasks = readFileSync(args.flags['--file'], 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+  } else if (args.flags['--stdin']) {
+    tasks = readFileSync(0, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+  }
+
+  const opts = { defaultProvider: cfg.defaults.provider };
+
+  if (tasks) {
+    const report = routeTasks(tasks, opts);
+    if (json) {
+      process.stdout.write(JSON.stringify({ status: 'success', ...report }, null, 2) + '\n');
+      return;
+    }
+    for (const r of report.results) {
+      const mark = r.decision === 'delegate' ? 'DELEGATE' : r.decision === 'keep' ? 'KEEP    ' : 'UNSURE  ';
+      process.stdout.write(`${mark}  ${r.task.slice(0, 70)}\n`);
+    }
+    process.stdout.write(`\n${report.delegate}/${report.total} delegable`);
+    if (report.delegatedPayloadChars) {
+      process.stdout.write(`, ${report.delegatedPayloadChars} chars kept out of the main context`);
+    }
+    process.stdout.write('\n');
+    return;
+  }
+
+  const task = args._[0] || args.flags['--task'];
+  if (!task) {
+    process.stdout.write(JSON.stringify({ status: 'error', error: 'No task given. Pass it as an argument, --file <path>, or --stdin.', code: 'invalid_input' }, null, 2) + '\n');
+    process.exitCode = 2;
+    return;
+  }
+
+  const r = routeTask(task, opts);
+  if (json) {
+    process.stdout.write(JSON.stringify({ status: 'success', ...r }, null, 2) + '\n');
+    return;
+  }
+  const label = { delegate: 'DELEGATE', keep: 'KEEP', unsure: 'UNSURE' }[r.decision];
+  process.stdout.write(`${label}  (confidence: ${r.confidence}, score: ${r.score})\n`);
+  process.stdout.write(`type: ${r.taskType}\n`);
+  if (r.suggestedProvider) process.stdout.write(`suggested provider: ${r.suggestedProvider}\n`);
+  process.stdout.write(`advice: ${r.advice}\n`);
+  if (r.reasons.length) {
+    process.stdout.write('why:\n');
+    for (const reason of r.reasons) process.stdout.write(`  ${reason}\n`);
+  }
+}
+
 async function cmdLimits(args) {
   const cfg = loadConfig();
   const installed = detectInstalledBrowsers();
@@ -438,6 +494,9 @@ export async function main(argv = process.argv.slice(2)) {
         break;
       case 'providers':
         await cmdProviders(args);
+        break;
+      case 'route':
+        await cmdRoute(args);
         break;
       case 'limits':
         await cmdLimits(args);

@@ -14,3 +14,4 @@ export { ErrorCodes, WebAIError } from './core/errors.js';
 export { loadConfig, listEnabledProviders } from './core/config.js';
 export { knownProviderIds, createProvider } from './providers/index.js';
 export { WebAIProvider } from './core/provider.js';
+export { classifyTask, routeTask, routeTasks } from './core/router.js';

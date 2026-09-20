@@ -15,11 +15,31 @@
 import { readFileSync } from 'node:fs';
 import { askWebAI } from './core/ask.js';
 import { knownProviderIds } from './providers/index.js';
+import { routeTask, routeTasks } from './core/router.js';
 import { loadConfig } from './core/config.js';
 import pkg from '../package.json' with { type: 'json' };
 
 const SERVER_INFO = { name: 'free-web-ai-worker', version: pkg.version };
 const PROTOCOL_VERSION = '2024-11-05';
+
+const ROUTE_TOOL = {
+  name: 'route_task',
+  description:
+    'Decide whether a task should be delegated to a free web AI or kept by the main model. ' +
+    'Deterministic heuristic, makes no network call and costs nothing. ' +
+    'Use it before large or ambiguous work to see whether delegating would save context.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      task: { type: 'string', description: 'One task description. For a batch, use tasks instead.' },
+      tasks: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional batch of task descriptions.',
+      },
+    },
+  },
+};
 
 const TOOL = {
   name: 'ask_web_ai',
@@ -58,10 +78,27 @@ async function handle(msg) {
     case 'notifications/initialized':
       return;
     case 'tools/list':
-      reply(id, { tools: [TOOL] });
+      reply(id, { tools: [ROUTE_TOOL, TOOL] });
       return;
     case 'tools/call': {
       const name = params?.name;
+
+      if (name === 'route_task') {
+        const args = params?.arguments || {};
+        const defaultProvider = loadConfig().defaults.provider;
+        const result = Array.isArray(args.tasks) && args.tasks.length
+          ? routeTasks(args.tasks, { defaultProvider })
+          : routeTask(args.task || '', { defaultProvider });
+        const summary = Array.isArray(args.tasks) && args.tasks.length
+          ? `${result.delegate}/${result.total} task(s) delegable` +
+            (result.delegatedPayloadChars ? `, ${result.delegatedPayloadChars} chars kept out of context` : '')
+          : `${result.decision.toUpperCase()} (confidence ${result.confidence}, score ${result.score})\n` +
+            (result.suggestedProvider ? `suggested provider: ${result.suggestedProvider}\n` : '') +
+            `advice: ${result.advice}\nwhy:\n  ${result.reasons.join('\n  ') || '(no strong signals)'}`;
+        reply(id, { content: [{ type: 'text', text: summary }], isError: false, _meta: { structured: result } });
+        return;
+      }
+
       if (name !== 'ask_web_ai') {
         replyError(id, -32602, `Unknown tool: ${name}`);
         return;

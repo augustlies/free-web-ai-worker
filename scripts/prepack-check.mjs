@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 
 const result = spawnSync(
   process.execPath,
-  ['--test', 'tests/unit.test.js', 'tests/throttle.test.js'],
+  ['--test', 'tests/unit.test.js', 'tests/throttle.test.js', 'tests/router.test.js'],
   { encoding: 'utf8' },
 );
 

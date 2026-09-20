@@ -60,7 +60,7 @@
     "providers": "node ./bin/ask-web-ai.js providers",
     "limits": "node ./bin/ask-web-ai.js limits",
     "cache": "node ./bin/ask-web-ai.js cache",
-    "test": "node --test tests/unit.test.js tests/throttle.test.js",
+    "test": "node --test tests/unit.test.js tests/throttle.test.js tests/router.test.js",
     "test:e2e": "node ./tests/e2e.live.js",
     "mcp": "node ./src/mcp-server.js",
     "prepack": "node ./scripts/prepack-check.mjs"
@@ -73,5 +73,3 @@
     "registry": "https://registry.npmjs.org/"
   }
 }
-
-

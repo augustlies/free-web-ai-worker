@@ -61,6 +61,51 @@ project.
 
 ---
 
+## Task Router
+
+Before doing work, you can ask whether the task is worth delegating at all.
+
+```bash
+ask-web-ai route "Summarise this article"          # -> DELEGATE
+ask-web-ai route "Refactor the auth module"        # -> KEEP
+ask-web-ai route --file tasks.txt                  # one task per line
+cat tasks.txt | ask-web-ai route --stdin --json    # batch, machine-readable
+```
+
+It is a **deterministic heuristic, not an AI call** -- deciding whether to save
+money must not itself cost money. It reads the task wording, scores it against
+delegable shapes (summarise, translate, classify, extract, rewrite, format) and
+blockers (repository context, file editing, tool use, multi-step work, current
+facts, engineering judgement), then reports a verdict with the reasons:
+
+```json
+{
+  "status": "success",
+  "task": "把 100 个关键词简单分类",
+  "decision": "delegate",
+  "confidence": "low",
+  "score": 4,
+  "taskType": "classify",
+  "suggestedProvider": "duckai",
+  "advice": "Send this to a web AI and use only the returned text.",
+  "reasons": ["+ classify (\"分类\")"]
+}
+```
+
+A task carrying a large payload scores higher, because that is exactly the text
+that would otherwise sit in the main context. Any hard blocker (repo context,
+file editing, tool use) keeps the task on the main model regardless of wording.
+
+**This is advisory.** It is pattern matching, so it is reliable on clearly
+shaped tasks and merely suggestive on vague ones -- which is why every verdict
+carries a confidence level and its reasoning, and why `decision` is never
+enforced. Ignore it whenever you disagree.
+
+Available as a CLI command, an MCP tool (`route_task`), and a Node export
+(`routeTask`, `classifyTask`, `routeTasks`).
+
+---
+
 ## Installation
 
 Requires **Node.js >= 20** and **Microsoft Edge or Google Chrome**.
@@ -258,6 +303,7 @@ ask-web-ai login --provider deepseek      # one-time login in the dedicated prof
 ask-web-ai browser                        # which browser is used / installed
 ask-web-ai browser --use chrome           # switch browser
 ask-web-ai browser --stop                 # close the window this tool opened
+ask-web-ai route "<task>"                # delegate or keep? (no network call)
 ask-web-ai providers                      # list providers and login requirements
 ask-web-ai limits                         # usage vs the anti-abuse caps
 ask-web-ai cache [--clear]                # inspect / clear the answer cache
