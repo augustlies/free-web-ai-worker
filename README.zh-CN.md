@@ -1,5 +1,7 @@
 # free-web-ai-worker
 
+[English](README.md) · **简体中文**
+
 **让你的 AI 编程 Agent 把简单的文本子任务外包给网页版免费 AI。**
 
 主模型把上下文和 Token 留给真正困难的部分。那些枯燥的文本活 —— 总结、翻译、
@@ -11,8 +13,6 @@
 
 不需要 API Key，不按 Token 计费，也不额外下载浏览器内核 —— 它直接驱动你已经装好的
 Edge 或 Chrome，通过**独立隔离的档案**复用你自己的登录状态。
-
-[English README](README.md)
 
 ![通过 free-web-ai-worker 向 Duck.ai 提问](docs/screenshot-answer.png)
 

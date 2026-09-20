@@ -1,5 +1,7 @@
 # free-web-ai-worker
 
+**English** · [简体中文](README.zh-CN.md)
+
 **Let your AI coding agent outsource simple text subtasks to a free web AI.**
 
 Your main agent keeps its context and tokens for the hard problems. The boring
