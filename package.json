@@ -1,6 +1,6 @@
 {
   "name": "free-web-ai-worker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Delegate simple, text-only subtasks from an AI coding agent to free web-based AI chats through a real Edge/Chrome browser.",
   "type": "module",
   "license": "MIT",
