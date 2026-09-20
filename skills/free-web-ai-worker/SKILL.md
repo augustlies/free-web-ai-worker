@@ -51,24 +51,31 @@ rewrite or reformat.
 
 ## How to call it
 
-Straight from GitHub -- no install step, no publish required:
+Use the fastest form available on this machine. Try them in order:
+
+1. **Local install or link** (preferred when present -- no network fetch):
 
 ```bash
-npx -y github:augustlies/free-web-ai-worker ask "<prompt>" --provider duckai --timeout 120 --json
+ask-web-ai ask "<prompt>" --provider duckai --timeout 120 --json
 ```
 
-Long input without shell-escaping:
+2. **From a clone of the repo:**
 
 ```bash
-npx -y github:augustlies/free-web-ai-worker ask --file ./subtask.txt --provider duckai --json
-cat notes.md | npx -y github:augustlies/free-web-ai-worker ask --stdin --provider duckai --json
+node bin/ask-web-ai.js ask "<prompt>" --json
 ```
 
-If the tool is already installed globally or locally, use it directly:
+3. **Straight from GitHub** (no install needed, but downloads each run):
 
 ```bash
-ask-web-ai ask "<prompt>" --json                 # if installed with npm i -g free-web-ai-worker
-node bin/ask-web-ai.js ask "<prompt>" --json     # if running from a cloned copy
+npx -y github:augustlies/free-web-ai-worker ask "<prompt>" --json
+```
+
+Long input without shell-escaping (any of the forms above works):
+
+```bash
+ask-web-ai ask --file ./subtask.txt --provider duckai --json
+cat notes.md | ask-web-ai ask --stdin --provider duckai --json
 ```
 
 ### Result contract
